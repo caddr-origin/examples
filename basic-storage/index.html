@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>caddr.org iframe communication</title>
+</head>
+<body>
+
+    <iframe src="https://gvlciu73qfbaesghzsdu6qrurgrgwjolnjskvzo5rq3ayri4proa.caddr.org/?src=https://caddr-org.github.io/examples/basic-storage/contract.js" id="caddrFrame" width="300" height="50"></iframe>
+
+    <br />
+    <textarea type="text" id="dataBox" style="width: 300px; height: 300px"></textarea>
+
+    <script>
+        const dataBox = document.getElementById('dataBox');
+        const caddrFrame = document.getElementById('caddrFrame');
+
+        window.addEventListener('message', function(event) {
+            // Always check the origin for security reasons
+            if (event.origin === "https://gvlciu73qfbaesghzsdu6qrurgrgwjolnjskvzo5rq3ayri4proa.caddr.org") {
+                const data = event.data;
+
+                if (data && data.action === 'data') {
+                    dataBox.value = data.value;
+                }
+            }
+        }, false);
+
+        // Send updated value to the iframe with 'save' action on input
+        dataBox.addEventListener('input', function() {
+            caddrFrame.contentWindow.postMessage({
+                action: 'save',
+                value: dataBox.value
+            }, "https://gvlciu73qfbaesghzsdu6qrurgrgwjolnjskvzo5rq3ayri4proa.caddr.org");
+        });
+    </script>
+</body>
+</html>
