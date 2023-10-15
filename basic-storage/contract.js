@@ -16,7 +16,10 @@ window.addEventListener('storage', function(event) {
 });
 
 function postToParent(value) {
-    window.parent.postMessage(value, '*'); // '*' means we're sending to any domain
+    window.parent.postMessage({
+        action: 'data',
+        value: value
+    }, '*');
 }
 
 postToParent(localStorage.getItem('data'));
