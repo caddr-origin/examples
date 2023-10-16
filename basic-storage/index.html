@@ -7,7 +7,7 @@
 </head>
 <body>
 
-    <iframe src="https://gvlciu73qfbaesghzsdu6qrurgrgwjolnjskvzo5rq3ayri4proa.caddr.org/?src=https://caddr-org.github.io/examples/basic-storage/contract.js" id="caddrFrame" width="300" height="50"></iframe>
+    <iframe src="https://bwz6zunesgk4zkbue56f4sjihezrt4mw6empnwzfdocmnkhbzmza.caddr.org/?src=https://caddr-org.github.io/examples/basic-storage/contract.js" id="caddrFrame" width="300" height="50"></iframe>
 
     <br />
     <textarea type="text" id="dataBox" style="width: 300px; height: 300px"></textarea>
@@ -18,7 +18,7 @@
 
         window.addEventListener('message', function(event) {
             // Always check the origin for security reasons
-            if (event.origin === "https://gvlciu73qfbaesghzsdu6qrurgrgwjolnjskvzo5rq3ayri4proa.caddr.org") {
+            if (event.origin === "https://bwz6zunesgk4zkbue56f4sjihezrt4mw6empnwzfdocmnkhbzmza.caddr.org") {
                 const data = event.data;
 
                 if (data && data.action === 'data') {
@@ -32,7 +32,7 @@
             caddrFrame.contentWindow.postMessage({
                 action: 'save',
                 value: dataBox.value
-            }, "https://gvlciu73qfbaesghzsdu6qrurgrgwjolnjskvzo5rq3ayri4proa.caddr.org");
+            }, "https://bwz6zunesgk4zkbue56f4sjihezrt4mw6empnwzfdocmnkhbzmza.caddr.org");
         });
     </script>
 </body>
