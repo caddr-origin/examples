@@ -16,7 +16,7 @@ window.addEventListener('storage', function(event) {
 });
 
 function postToParent(value) {
-    window.parent.postMessage({ action: 'data', value: value }, '*');
+    (window.opener || window.parent).postMessage({ action: 'data', value: value }, '*');
 }
 
 postToParent(localStorage.getItem('data'));

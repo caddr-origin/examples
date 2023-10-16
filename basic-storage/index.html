@@ -6,19 +6,24 @@
     <title>caddr.org iframe communication</title>
 </head>
 <body>
-
-    <iframe src="https://bwz6zunesgk4zkbue56f4sjihezrt4mw6empnwzfdocmnkhbzmza.caddr.org/?src=https://caddr-org.github.io/examples/basic-storage/contract.js" id="caddrFrame" width="300" height="50"></iframe>
+    <button id="connect">Connect</button>
 
     <br />
     <textarea type="text" id="dataBox" style="width: 300px; height: 300px"></textarea>
 
     <script>
+
+        document.getElementById('connect').onclick = () => {
+          const url = "https://6slxrajkikcdlcn3batquumrivttuyn46npa3kgtronxzaafmsnq.caddr.org/?src=https://caddr-org.github.io/examples/basic-storage/contract.js";
+          caddrWindow = window.open(url, "_blank", "width=450,height=600,top=100,popup");
+        }
+
         const dataBox = document.getElementById('dataBox');
         const caddrFrame = document.getElementById('caddrFrame');
 
         window.addEventListener('message', function(event) {
             // Always check the origin for security reasons
-            if (event.origin === "https://bwz6zunesgk4zkbue56f4sjihezrt4mw6empnwzfdocmnkhbzmza.caddr.org") {
+            if (event.origin === "https://6slxrajkikcdlcn3batquumrivttuyn46npa3kgtronxzaafmsnq.caddr.org") {
                 const data = event.data;
 
                 if (data && data.action === 'data') {
@@ -29,10 +34,10 @@
 
         // Send updated value to the iframe with 'save' action on input
         dataBox.addEventListener('input', function() {
-            caddrFrame.contentWindow.postMessage({
+            caddrWindow.postMessage({
                 action: 'save',
                 value: dataBox.value
-            }, "https://bwz6zunesgk4zkbue56f4sjihezrt4mw6empnwzfdocmnkhbzmza.caddr.org");
+            }, "https://6slxrajkikcdlcn3batquumrivttuyn46npa3kgtronxzaafmsnq.caddr.org");
         });
     </script>
 </body>
