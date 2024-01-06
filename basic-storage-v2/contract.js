@@ -9,7 +9,7 @@ function mountHandle(handle){
         if(handle && handle.localStorage){
             return handle.localStorage.getItem('data')
         }else{
-            const values = Object.fromEntries(document.cookie.split(';').map(k => k.split('=').map(decodeURIComponent)));
+            const values = Object.fromEntries(document.cookie.split(';').map(k => k.trim().split('=').map(decodeURIComponent)));
             return values['data']
         }
     }
