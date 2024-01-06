@@ -15,6 +15,7 @@ function mountHandle(handle){
     }
 
     const setData = (data) => {
+        lastValue = data;
         if(handle && handle.localStorage){
             handle.localStorage.setItem('data', data);
             if(channel){
@@ -40,7 +41,7 @@ function mountHandle(handle){
                 lastValue = newData;
                 postToParent(newData)
             }
-        }, 100)
+        }, 50)
     }
 
     postToParent(lastValue)
@@ -76,7 +77,7 @@ if(url.searchParams.get('authPopup')){
     const launchPopup = () => {
         let url = new URL(location.href)
         url.searchParams.set('authPopup', 'true')
-        window.open(url, "_blank", "width=450,height=600,top=100,popup");
+        window.open(url, "_blank", "width=300,height=200,top=100,popup");
     }
     const hasNoAccess = () => {
         const button = document.createElement('button')
