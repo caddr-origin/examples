@@ -73,31 +73,35 @@ if(url.searchParams.get('authPopup')){
     }
     document.body.appendChild(button)
 }else if(document.hasStorageAccess){
+    const hasNoAccess = () => {
+        const button = document.createElement('button')
+        button.innerText = 'Grant storage access'
+        button.style.top = 0;
+        button.style.left = 0;
+        button.style.position = 'absolute'
+        button.style.width = '100vw'
+        button.style.height = '100vh'
+        button.onclick = () => {
+            document.requestStorageAccess({all: true}).then(handle => {
+                button.remove()
+                mountHandle(handle)
+            }, (err) => {
+                console.error(err)
+                let url = new URL(location.href)
+                url.searchParams.set('authPopup', 'true')
+                window.open(url, "_blank", "width=450,height=600,top=100,popup");
+            })
+        }
+        document.body.appendChild(button)
+    }
     document.hasStorageAccess().then(hasAccess => {
         if(!hasAccess){
-            const button = document.createElement('button')
-            button.innerText = 'Grant storage access'
-            button.style.top = 0;
-            button.style.left = 0;
-            button.style.position = 'absolute'
-            button.style.width = '100vw'
-            button.style.height = '100vh'
-            button.onclick = () => {
-                document.requestStorageAccess({all: true}).then(handle => {
-                    button.remove()
-                    mountHandle(handle)
-                }, (err) => {
-                    console.error(err)
-                    let url = new URL(location.href)
-                    url.searchParams.set('authPopup', 'true')
-
-                    window.open(url, "_blank", "width=450,height=600,top=100,popup");
-                })
-            }
-            document.body.appendChild(button)
+            hasNoAccess()
         }else{
             document.requestStorageAccess({all: true}).then(handle => {
                 mountHandle(handle)
+            }, err => {
+                hasNoAccess()
             })
         }
     })
