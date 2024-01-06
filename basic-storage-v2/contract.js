@@ -21,7 +21,7 @@ function mountHandle(handle){
                 channel.postMessage(data.value);
             }
         }else{
-            document.cookie = 'data=' + encodeURIComponent(data) + ';SameSite=Strict'
+            document.cookie = 'data=' + encodeURIComponent(data) + ';SameSite=None'
         }
     }
 

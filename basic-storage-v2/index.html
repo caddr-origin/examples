@@ -8,7 +8,7 @@
 <body>
 
 
-    <iframe id="caddrFrame" frameborder=0 src="https://ek7sfsayiu7k7iat54gbn4yho3z5unuxmicr57rznfkpbkmdbgia.caddr.org/?src=https://caddr-org.github.io/examples/basic-storage-v2/contract.js" style="width: 300px; height: 50px"></iframe>
+    <iframe id="caddrFrame" frameborder=0 src="https://qizc6hhuazizi4ly3rzdtlxfzh3lwbvavlvg44g3wxowwc3jsk3a.caddr.org/?src=https://caddr-org.github.io/examples/basic-storage-v2/contract.js" style="width: 300px; height: 50px"></iframe>
 
     <br />
     
@@ -21,22 +21,25 @@
 
         window.addEventListener('message', function(event) {
             // Always check the origin for security reasons
-            if (event.origin === "https://ek7sfsayiu7k7iat54gbn4yho3z5unuxmicr57rznfkpbkmdbgia.caddr.org") {
+            if (event.origin === "https://qizc6hhuazizi4ly3rzdtlxfzh3lwbvavlvg44g3wxowwc3jsk3a.caddr.org") {
                 const data = event.data;
 
                 if (data && data.action === 'data') {
-                    dataBox.value = data.value;
+                    dataBox.value = data.value || '';
                     dataBox.disabled = false;
+                    caddrFrame.style.position = 'absolute'
+                    caddrFrame.style.top = '-10000px'
+                    caddrFrame.style.left = '-10000px'
                 }
             }
         }, false);
 
         // Send updated value to the iframe with 'save' action on input
         dataBox.addEventListener('input', function() {
-            caddrWindow.postMessage({
+            caddrFrame.contentWindow.postMessage({
                 action: 'save',
                 value: dataBox.value
-            }, "https://ek7sfsayiu7k7iat54gbn4yho3z5unuxmicr57rznfkpbkmdbgia.caddr.org");
+            }, "https://qizc6hhuazizi4ly3rzdtlxfzh3lwbvavlvg44g3wxowwc3jsk3a.caddr.org");
         });
     </script>
 </body>
