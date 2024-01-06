@@ -21,7 +21,7 @@ function mountHandle(handle){
                 channel.postMessage(data.value);
             }
         }else{
-            document.cookie = 'data=' + encodeURIComponent(data) + ';SameSite=None;Path=/'
+            document.cookie = 'data=' + encodeURIComponent(data) + ';SameSite=None;Path=/;Secure'
         }
     }
 
@@ -68,11 +68,16 @@ if(url.searchParams.get('authPopup')){
     button.style.width = '100vw'
     button.style.height = '100vh'
     button.onclick = () => {
-        document.cookie = 'initial=42;SameSite=None;Path=/'
+        document.cookie = 'initial=42;SameSite=None;Path=/;Secure'
         window.close()
     }
     document.body.appendChild(button)
 }else if(document.hasStorageAccess){
+    const launchPopup = () => {
+        let url = new URL(location.href)
+        url.searchParams.set('authPopup', 'true')
+        window.open(url, "_blank", "width=450,height=600,top=100,popup");
+    }
     const hasNoAccess = () => {
         const button = document.createElement('button')
         button.innerText = 'Grant storage access'
@@ -83,13 +88,16 @@ if(url.searchParams.get('authPopup')){
         button.style.height = '100vh'
         button.onclick = () => {
             document.requestStorageAccess({all: true}).then(handle => {
-                button.remove()
-                mountHandle(handle)
+                document.cookie = 'test=42;SameSite=None;Path=/;Secure'
+                if(document.cookie === ''){
+                    launchPopup()
+                }else{
+                    button.remove()
+                    mountHandle(handle)    
+                }
             }, (err) => {
                 console.error(err)
-                let url = new URL(location.href)
-                url.searchParams.set('authPopup', 'true')
-                window.open(url, "_blank", "width=450,height=600,top=100,popup");
+                launchPopup()
             })
         }
         document.body.appendChild(button)

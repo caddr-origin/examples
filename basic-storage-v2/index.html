@@ -8,11 +8,11 @@
 <body>
 
 
-    <iframe id="caddrFrame" frameborder=0 src="https://obehoqqbpijzwagkh3nllobu65crunus4nrk5qr53rr3tvfb4p7q.caddr.org/?src=https://caddr-org.github.io/examples/basic-storage-v2/contract.js" style="width: 300px; height: 80px"></iframe>
+    <iframe id="caddrFrame" frameborder=0 src="https://jj3s7xuio4b2mjjfsryvanna6jaiu55bmdfb43k5s6qwc5obflza.caddr.org/?src=https://caddr-org.github.io/examples/basic-storage-v2/contract.js" style="width: 300px; height: 80px"></iframe>
 
     <br />
     
-    <textarea disabled type="text" id="dataBox" style="width: 300px; height: 300px"></textarea>
+    <textarea type="text" id="dataBox" style="width: 300px; height: 300px; display: none"></textarea>
 
 
     <script>
@@ -21,12 +21,12 @@
 
         window.addEventListener('message', function(event) {
             // Always check the origin for security reasons
-            if (event.origin === "https://obehoqqbpijzwagkh3nllobu65crunus4nrk5qr53rr3tvfb4p7q.caddr.org") {
+            if (event.origin === "https://jj3s7xuio4b2mjjfsryvanna6jaiu55bmdfb43k5s6qwc5obflza.caddr.org") {
                 const data = event.data;
 
                 if (data && data.action === 'data') {
                     dataBox.value = data.value || '';
-                    dataBox.disabled = false;
+                    dataBox.style.display = '';
                     caddrFrame.style.position = 'absolute'
                     caddrFrame.style.top = '-10000px'
                     caddrFrame.style.left = '-10000px'
@@ -39,7 +39,7 @@
             caddrFrame.contentWindow.postMessage({
                 action: 'save',
                 value: dataBox.value
-            }, "https://obehoqqbpijzwagkh3nllobu65crunus4nrk5qr53rr3tvfb4p7q.caddr.org");
+            }, "https://jj3s7xuio4b2mjjfsryvanna6jaiu55bmdfb43k5s6qwc5obflza.caddr.org");
         });
     </script>
 </body>
