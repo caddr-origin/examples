@@ -71,7 +71,10 @@ if(document.hasStorageAccess){
                 document.requestStorageAccess({all: true}).then(handle => {
                     button.remove()
                     mountHandle(handle)
-                }, () => {
+                }, (err) => {
+                    console.error(err)
+                    
+                    window.open(location.href, "_blank", "width=450,height=600,top=100,popup");
                 })
             }
             document.body.appendChild(button)
