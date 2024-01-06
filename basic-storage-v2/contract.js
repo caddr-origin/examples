@@ -27,7 +27,7 @@ function mountHandle(handle){
 
     let lastValue = getData()
 
-    if(handle.BroadcastChannel){
+    if(handle && handle.BroadcastChannel){
         channel = handle.BroadcastChannel('data')
         channel.addEventListener('message', event => {
             postToParent(getData());
@@ -67,9 +67,7 @@ if(document.hasStorageAccess){
                 document.requestStorageAccess({all: true}).then(handle => {
                     button.remove()
                     mountHandle(handle)
-                    window.parent.postMessage({ action: 'access-approved' }, '*');
                 }, () => {
-                    window.parent.postMessage({ action: 'access-rejected' }, '*');
                 })
             }
             document.body.appendChild(button)

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>caddr.org iframe communication</title>
+</head>
+<body>
+
+
+    <iframe id="caddrFrame" src="https://ek7sfsayiu7k7iat54gbn4yho3z5unuxmicr57rznfkpbkmdbgia.caddr.org/?src=https://caddr-org.github.io/examples/basic-storage-v2/contract.js"></iframe>
+
+    <br />
+    
+    <textarea disabled type="text" id="dataBox" style="width: 300px; height: 300px"></textarea>
+
+
+    <script>
+        const dataBox = document.getElementById('dataBox');
+        const caddrFrame = document.getElementById('caddrFrame');
+
+        window.addEventListener('message', function(event) {
+            // Always check the origin for security reasons
+            if (event.origin === "https://ek7sfsayiu7k7iat54gbn4yho3z5unuxmicr57rznfkpbkmdbgia.caddr.org") {
+                const data = event.data;
+
+                if (data && data.action === 'data') {
+                    dataBox.value = data.value;
+                    dataBox.disabled = false;
+                }
+            }
+        }, false);
+
+        // Send updated value to the iframe with 'save' action on input
+        dataBox.addEventListener('input', function() {
+            caddrWindow.postMessage({
+                action: 'save',
+                value: dataBox.value
+            }, "https://ek7sfsayiu7k7iat54gbn4yho3z5unuxmicr57rznfkpbkmdbgia.caddr.org");
+        });
+    </script>
+</body>
+</html>
