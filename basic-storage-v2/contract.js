@@ -60,9 +60,13 @@ function mountHandle(handle){
 if(document.hasStorageAccess){
     document.hasStorageAccess().then(hasAccess => {
         if(!hasAccess){
-            window.parent.postMessage({ action: 'access-needed' }, '*');
             const button = document.createElement('button')
             button.innerText = 'Grant storage access'
+            button.style.top = 0;
+            button.style.left = 0;
+            button.style.position = 'absolute'
+            button.style.width = '100vw'
+            button.style.height = '100vh'
             button.onclick = () => {
                 document.requestStorageAccess({all: true}).then(handle => {
                     button.remove()
