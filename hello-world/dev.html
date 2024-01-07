@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>caddr.org hello-world</title>
+</head>
+<body>
+
+
+    <iframe id="caddrFrame" frameborder=0 style="width: 300px; height: 80px"></iframe>
+
+    <script>
+        let contractURL = new URL('demo.js', location.href)
+        let hostOrigin = ''
+
+        async function getHash32(url){
+            let n = new Uint8Array(await fetch(url).then(k => k.arrayBuffer()).then(k => crypto.subtle.digest('SHA-256', k)))
+                .reduce((acc, k) => acc * 256n + BigInt(k), 0n) * 256n**3n / 32n**3n, res = ''
+            while ((n /= 32n) !== 0n) res = 'abcdefghijklmnopqrstuvwxyz234567'[Number(n % 32n)] + res;
+            return res
+        }
+
+        getHash32(contractURL).then(hash32 => {
+            hostOrigin = 'https://' + hash32 + '.caddr.org';
+            let url = new URL(hostOrigin)
+            url.searchParams.set('src', contractURL)
+            caddrFrame.setAttribute('src', url)
+        })
+    </script>
+</body>
+</html>
