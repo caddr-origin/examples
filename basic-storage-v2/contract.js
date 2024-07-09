@@ -27,21 +27,25 @@ function mountHandle(handle){
     }
 
     let lastValue = getData()
+    
 
+    let poller = setInterval(() => {
+        let newData = getData()
+        if(newData !== lastValue){
+            lastValue = newData;
+            postToParent(newData)
+        }
+    }, 50)
+
+    // broadcast channel is broken on chrome unless specific flags
+    // are included, so we always poll and disable upon the first
+    // recieved broadcastchannel message
     if(handle && handle.BroadcastChannel){
         channel = handle.BroadcastChannel('data')
         channel.addEventListener('message', event => {
+            clearInterval(poller);
             postToParent(getData());
         });
-    }else{
-        // if we dont have broadcast channel we can do polling
-        setInterval(() => {
-            let newData = getData()
-            if(newData !== lastValue){
-                lastValue = newData;
-                postToParent(newData)
-            }
-        }, 50)
     }
 
     postToParent(lastValue)
