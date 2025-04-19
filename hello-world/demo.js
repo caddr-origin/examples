@@ -1,3 +1,1 @@
-document.open()
-document.write('Hello Content-Addressed World!')
-document.close()
+document.body.innerHTML = 'Hello Content-Addressed World!'
