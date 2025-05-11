@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>caddr.org iframe communication</title>
+</head>
+<body>
+
+
+    <iframe id="caddrFrame" frameborder=0 src="https://4ki77nvzueuneq2b53uo27uzr3ud5v4tmmmmm6yufiozfurfdsa.caddr.org/?src=https://caddr-origin.github.io/examples/basic-storage-v2/contract.js" style="width: 300px; height: 80px"></iframe>
+
+    <br />
+    
+    <textarea type="text" id="dataBox" style="width: 300px; height: 300px; display: none"></textarea>
+
+
+    <script>
+        const dataBox = document.getElementById('dataBox');
+        const caddrFrame = document.getElementById('caddrFrame');
+
+        window.addEventListener('message', function(event) {
+            // Always check the origin for security reasons
+            if (event.origin === "https://4ki77nvzueuneq2b53uo27uzr3ud5v4tmmmmm6yufiozfurfdsa.caddr.org") {
+                const data = event.data;
+
+                if (data && data.action === 'data') {
+                    dataBox.value = data.value || '';
+                    dataBox.style.display = '';
+                    caddrFrame.style.position = 'absolute'
+                    caddrFrame.style.top = '-10000px'
+                    caddrFrame.style.left = '-10000px'
+                }
+            }
+        }, false);
+
+        // Send updated value to the iframe with 'save' action on input
+        dataBox.addEventListener('input', function() {
+            caddrFrame.contentWindow.postMessage({
+                action: 'save',
+                value: dataBox.value
+            }, "https://4ki77nvzueuneq2b53uo27uzr3ud5v4tmmmmm6yufiozfurfdsa.caddr.org");
+        });
+    </script>
+</body>
+</html>

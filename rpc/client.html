@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>caddr.org iframe communication</title>
+  </head>
+  <body>
+    <h1>CADDR RPC</h1>
+    <iframe
+      id="caddrFrame"
+      frameborder="0"
+      style="width: 300px; height: 80px"
+    ></iframe>
+
+    <br />
+
+    <div id="dataBox"></div>
+
+    <script>
+      // const dataBox = document.getElementById("dataBox");
+      const caddrFrame = document.getElementById("caddrFrame");
+
+      function hideAuthorizationFrame() {
+        // dataBox.style.display = "";
+        caddrFrame.style.position = "absolute";
+        caddrFrame.style.top = "-10000px";
+        caddrFrame.style.left = "-10000px";
+      }
+
+      const requestHandlers = {
+        async echo(data) {
+          return "Echo: " + data;
+        },
+        async add(a, b) {
+          return a + b;
+        },
+        async listMethods() {
+          return Object.keys(requestHandlers);
+        },
+        async onConnect() {
+          hideAuthorizationFrame();
+          dataBox.innerText = "Listing methods...";
+          const servers = await RPC("*", "listMethods");
+          console.log("all listMethods", servers);
+          dataBox.innerText = "";
+          for (let info of servers) {
+            const block = document.createElement("div");
+            block.innerText = `${info.from} (${info.fromOrigin})`;
+            for (let method of info.result) {
+              const button = document.createElement("button");
+              button.innerText = method;
+              button.addEventListener("click", () => {
+                RPC(info.from, method, prompt("Input for " + method)).then(
+                  (result) => {
+                    alert(JSON.stringify(result));
+                  }
+                );
+              });
+              block.appendChild(button);
+            }
+            dataBox.appendChild(block);
+          }
+        },
+      };
+
+      async function RPC(clientId, method, ...params) {
+        // genreally responds whenever first reply recieved, except for where clientId='*'
+        // then we wait until a timeout and return an array with all replies.
+        console.log("-->", clientId, method, params);
+        const replyId = replyIdCounter++;
+        return new Promise((resolve, reject) => {
+          caddrFrame.contentWindow.postMessage(
+            {
+              to: clientId,
+              toOrigin: "*",
+              id: replyId,
+              method: method,
+              params: params,
+            },
+            hostOrigin
+          );
+          if (clientId === "*") {
+            const replies = {};
+            replyCallbacks[replyId] = (reply) => {
+              replies[reply.from] = reply;
+            };
+            setTimeout(() => {
+              delete replyCallbacks[replyId];
+              resolve(Object.values(replies));
+            }, 100);
+          } else {
+            replyCallbacks[replyId] = (reply) => {
+              delete replyCallbacks[replyId];
+              if (reply.error) {
+                reject(reply.error);
+              } else {
+                resolve(reply.result);
+              }
+            };
+          }
+        });
+      }
+
+      // send(clientId, method, data)
+      // how do replies work? we have multiple replies from multiple clients because broadcast is ok i guess.
+      const replyCallbacks = {};
+      let replyIdCounter = 1;
+
+      window.addEventListener(
+        "message",
+        function (event) {
+          // console.log(event.origin, event.data)
+          // Always check the origin for security reasons
+          if (event.origin === hostOrigin) {
+            const data = JSON.parse(event.data.value);
+
+            if (requestHandlers[data.method]) {
+              console.log("<--", data.from, data.method, data.params);
+              requestHandlers[data.method](...data.params).then(
+                (result) => {
+                  if (data.id) {
+                    caddrFrame.contentWindow.postMessage(
+                      {
+                        to: data.from,
+                        toOrigin: data.fromOrigin,
+                        result: result,
+                        id: data.id,
+                      },
+                      hostOrigin
+                    );
+                  }
+                },
+                (error) => {
+                  if (data.id) {
+                    caddrFrame.contentWindow.postMessage(
+                      {
+                        to: data.from,
+                        toOrigin: data.fromOrigin,
+                        error: error,
+                        id: data.id,
+                      },
+                      hostOrigin
+                    );
+                  }
+                }
+              );
+            } else if (data.id) {
+              console.log("<--", data.from, data);
+              if (replyCallbacks[data.id]) {
+                replyCallbacks[data.id](data);
+              } else {
+                console.log("no reply callback for id", payload.id);
+              }
+            } else {
+              console.log("<--", data);
+            }
+          }
+        },
+        false
+      );
+
+      const contractURL = new URL("contract.js", location.href);
+      let hostOrigin = "";
+
+      async function getHash32(url) {
+        let n =
+            (new Uint8Array(
+              await fetch(url)
+                .then((k) => k.arrayBuffer())
+                .then((k) => crypto.subtle.digest("SHA-256", k))
+            ).reduce((acc, k) => acc * 256n + BigInt(k), 0n) *
+              256n ** 3n) /
+            32n ** 3n,
+          res = "";
+        while ((n /= 32n) !== 0n)
+          res = "abcdefghijklmnopqrstuvwxyz234567"[Number(n % 32n)] + res;
+        return res;
+      }
+
+      getHash32(contractURL).then((hash32) => {
+        hostOrigin = "https://" + hash32 + ".caddr.org";
+        let url = new URL(hostOrigin);
+        url.searchParams.set("src", contractURL);
+        caddrFrame.setAttribute("src", url);
+      });
+    </script>
+  </body>
+</html>
