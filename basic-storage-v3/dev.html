@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>caddr.org iframe communication</title>
+</head>
+<body>
+
+
+    <iframe id="caddrFrame" frameborder=0 style="width: 300px; height: 80px"></iframe>
+
+    <br />
+    
+    <textarea type="text" id="dataBox" style="width: 300px; height: 300px; display: none"></textarea>
+
+
+    <script>
+
+        const dataBox = document.getElementById('dataBox');
+        const caddrFrame = document.getElementById('caddrFrame');
+
+
+        window.addEventListener('message', function(event) {
+        	// console.log(event.origin, event.data)
+            // Always check the origin for security reasons
+            if (event.origin === hostOrigin) {
+                const data = event.data;
+
+                if (data && data.action === 'data') {
+                    dataBox.value = data.value || '';
+                    dataBox.style.display = '';
+                    caddrFrame.style.position = 'absolute'
+                    caddrFrame.style.top = '-10000px'
+                    caddrFrame.style.left = '-10000px'
+                }
+            }
+        }, false);
+
+        // Send updated value to the iframe with 'save' action on input
+        dataBox.addEventListener('input', function() {
+            caddrFrame.contentWindow.postMessage({
+                action: 'save',
+                value: dataBox.value
+            }, hostOrigin);
+        });
+
+
+		let contractURL = new URL('contract.js', location.href)
+		let hostOrigin = ''
+
+    	async function getHash32(url){
+			let n = new Uint8Array(await fetch(url).then(k => k.arrayBuffer()).then(k => crypto.subtle.digest('SHA-256', k)))
+				.reduce((acc, k) => acc * 256n + BigInt(k), 0n) * 256n**3n / 32n**3n, res = ''
+			while ((n /= 32n) !== 0n) res = 'abcdefghijklmnopqrstuvwxyz234567'[Number(n % 32n)] + res;
+			return res
+		}
+
+		getHash32(contractURL).then(hash32 => {
+			hostOrigin = 'https://' + hash32 + '.caddr.org';
+			let url = new URL(hostOrigin)
+			url.searchParams.set('src', contractURL)
+			caddrFrame.setAttribute('src', url)
+		})
+
+    </script>
+</body>
+</html>
+
+
+
