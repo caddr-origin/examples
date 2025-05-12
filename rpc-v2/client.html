@@ -28,52 +28,82 @@
                 caddrFrame.style.left = "-10000px";
             }
 
+            let servers = {};
+            function showServers() {
+                dataBox.innerText = "";
+                for (let info of Object.values(servers)) {
+                    const block = document.createElement("div");
+                    block.innerText = `${info.from} (${info.fromOrigin})`;
+                    for (let method of info.result) {
+                        const button = document.createElement("button");
+                        button.innerText = method;
+                        button.addEventListener("click", () => {
+                            RPC(
+                                info.from,
+                                method,
+                                prompt("Input for " + method),
+                            ).then((result) => {
+                                alert(JSON.stringify(result));
+                            });
+                        });
+                        block.appendChild(button);
+                    }
+                    dataBox.appendChild(block);
+                }
+            }
+
             const requestHandlers = {
-                async echo(data) {
+                async echo(sender, data) {
                     return "Echo: " + data;
                 },
-                async setBackgroundColor(color) {
+                async setBackgroundColor(sender, color) {
                     document.body.style.background = color;
-                },
-                async add(a, b) {
-                    return a + b;
                 },
                 async listMethods() {
                     return Object.keys(requestHandlers);
                 },
-                async onConnect() {
+                async addServer(sender, methods) {
+                    servers[sender.from] = {
+                        from: sender.from,
+                        fromOrigin: sender.fromOrigin,
+                        result: methods,
+                    };
+                    showServers();
+                    return await requestHandlers.listMethods();
+                },
+                async onConnect(sender) {
                     hideAuthorizationFrame();
                     dataBox.innerText = "Listing methods...";
-                    const servers = await RPC("*", "listMethods");
-                    console.log("all listMethods", servers);
-                    dataBox.innerText = "";
-                    for (let info of servers) {
-                        const block = document.createElement("div");
-                        block.innerText = `${info.from} (${info.fromOrigin})`;
-                        for (let method of info.result) {
-                            const button = document.createElement("button");
-                            button.innerText = method;
-                            button.addEventListener("click", () => {
-                                RPC(
-                                    info.from,
-                                    method,
-                                    prompt("Input for " + method),
-                                ).then((result) => {
-                                    alert(JSON.stringify(result));
-                                });
-                            });
-                            block.appendChild(button);
-                        }
-                        dataBox.appendChild(block);
+
+                    const allServers = await RPC(
+                        "*",
+                        "addServer",
+                        await requestHandlers.listMethods(),
+                    );
+                    for (let info of allServers) {
+                        servers[info.from] = info;
                     }
+                    showServers();
                 },
             };
 
-            async function RPC(clientId, method, ...params) {
+            async function NOTIFY(clientId, method, params) {
+                caddrFrame.contentWindow.postMessage(
+                    {
+                        to: clientId,
+                        toOrigin: "*",
+                        method: method,
+                        params: params,
+                    },
+                    hostOrigin,
+                );
+            }
+            async function RPC(clientId, method, params) {
                 // genreally responds whenever first reply recieved, except for where clientId='*'
                 // then we wait until a timeout and return an array with all replies.
-                console.log("-->", clientId, method, params);
+
                 const replyId = replyIdCounter++;
+                console.log("-->", clientId, replyId, method, params);
                 return new Promise((resolve, reject) => {
                     caddrFrame.contentWindow.postMessage(
                         {
@@ -93,7 +123,7 @@
                         setTimeout(() => {
                             delete replyCallbacks[replyId];
                             resolve(Object.values(replies));
-                        }, 100);
+                        }, 1000);
                     } else {
                         replyCallbacks[replyId] = (reply) => {
                             delete replyCallbacks[replyId];
@@ -127,7 +157,14 @@
                                 data.method,
                                 data.params,
                             );
-                            requestHandlers[data.method](...data.params).then(
+                            const sender = {
+                                from: data.from,
+                                fromOrigin: data.fromOrigin,
+                            };
+                            requestHandlers[data.method](
+                                sender,
+                                data.params,
+                            ).then(
                                 (result) => {
                                     if (data.id) {
                                         caddrFrame.contentWindow.postMessage(
@@ -162,7 +199,8 @@
                             } else {
                                 console.log(
                                     "no reply callback for id",
-                                    payload.id,
+                                    data.id,
+                                    data,
                                 );
                             }
                         } else {

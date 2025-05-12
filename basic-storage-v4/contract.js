@@ -1,6 +1,12 @@
 const button = document.createElement("button");
 const url = new URL(location.href);
 
+// Because on Firefox and Safari we need to fall back
+// to cookie storage, and there is a maximum of 4KB
+// per domain. Additionally, because of state partitioning
+// on Firefox, BroadcastChannel only speeds up the rare situations
+// where the top-level origins are the same.
+
 function postToParent(value) {
   (window.opener || window.parent).postMessage(
     { action: "data", value: value },
@@ -9,6 +15,8 @@ function postToParent(value) {
 }
 
 function mountHandle(handle) {
+  let lastValue = getData();
+
   const getData = () => {
     if (handle && handle.localStorage) {
       return handle.localStorage.getItem("data");
@@ -30,32 +38,26 @@ function mountHandle(handle) {
       document.cookie =
         "data=" + encodeURIComponent(data) + ";SameSite=None;Path=/;Secure";
     }
+    bc.postMessage(data);
   };
 
-  let lastValue = getData();
+  const pollingLoop = () => {
+    let newData = getData();
+    if (newData !== lastValue) {
+      lastValue = newData;
+      postToParent(newData);
+    }
+  };
 
   if (handle && handle.localStorage) {
-    window.addEventListener("storage", (event) => {
-      if (event.key === "data") {
-        console.log("storage");
-        postToParent(event.newValue);
-      }
-    });
+    window.addEventListener("storage", pollingLoop);
   } else if (window.cookieStore) {
-    cookieStore.onchange = (e) => {
-      console.log("cookie change", e);
-      postToParent(getData());
-    };
+    cookieStore.onchange = pollingLoop;
   } else {
-    setInterval(() => {
-      let newData = getData();
-      if (newData !== lastValue) {
-        console.log("polling");
-        lastValue = newData;
-        postToParent(newData);
-      }
-    }, 50);
+    setInterval(pollingLoop, 250);
   }
+  let bc = new BroadcastChannel("caddr");
+  bc.onmessage = pollingLoop;
 
   postToParent(lastValue);
 
