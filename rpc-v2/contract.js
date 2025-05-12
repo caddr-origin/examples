@@ -4,7 +4,9 @@ const clientId = Math.random().toString(36).substring(2, 15);
 let lastValue = "";
 
 function postToParent(value) {
-  (window.opener || window.parent).postMessage(
+  const ancestor = window.opener || window.parent
+  if(window === ancestor) return;
+  ancestor.postMessage(
     { action: "data", value: value },
     "*",
   );
