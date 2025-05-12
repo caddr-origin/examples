@@ -138,10 +138,6 @@ function makeStorageRequest(successCallback, errorCallback) {
   );
 }
 
-const bc = new BroadcastChannel('caddr')
-bc.onmessage = (e) => {
-  console.log('got broadcast', e)
-}
 
 // For Safari, we need to show a popup to get storage access. This
 // handles when caddr is loaded from a popup.
@@ -156,7 +152,6 @@ if (url.searchParams.get("authPopup")) {
   button.onclick = () => {
     makeStorageRequest(
       () => {
-        bc.postMessage('storage request granted');
         if(window.opener) window.opener.retryMountHandle();
         window.close();
       },
@@ -170,17 +165,6 @@ if (url.searchParams.get("authPopup")) {
     popupUrl.searchParams.set("authPopup", "true");
     if(!window.open(popupUrl, "_blank", "width=300,height=200,top=100,popup")){
       console.log("no opener available");
-      const autoRetry = () => {
-         document.hasStorageAccess().then(result => {
-           if(result){
-             retryMountHandle()
-           }else{
-             console.log('Retry storage access');
-            setTimeout(autoRetry, 500);
-           }
-         })
-      }
-      setTimeout(autoRetry, 1000);
     }
   };
   const showRequestButton = () => {
