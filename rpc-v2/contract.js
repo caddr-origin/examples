@@ -149,7 +149,7 @@ if (url.searchParams.get("authPopup")) {
   button.onclick = () => {
     makeStorageRequest(
       () => {
-        window.opener.retryMountHandle();
+        (window.opener || window.parent).retryMountHandle();
         window.close();
       },
       () => {},
