@@ -163,13 +163,14 @@ if (url.searchParams.get("authPopup")) {
     if(!window.open(popupUrl, "_blank", "width=300,height=200,top=100,popup")){
       console.log("no opener available");
       const autoRetry = () => {
-         makeStorageRequest(
-          (handle) => mountHandle(handle),
-          (err) => {
-            console.error(err);
+         document.hasStorageAccess().then(result => {
+           if(result){
+             retryMountHandle()
+           }else{
+             console.log('Retry storage access');
             setTimeout(autoRetry, 500);
-          },
-        );
+           }
+         })
       }
       setTimeout(autoRetry, 1000);
     }
