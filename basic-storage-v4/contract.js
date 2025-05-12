@@ -4,18 +4,21 @@ const url = new URL(location.href);
 function postToParent(value) {
   (window.opener || window.parent).postMessage(
     { action: "data", value: value },
-    "*"
+    "*",
   );
 }
 
 function mountHandle(handle) {
-  let channel = null;
-
   const getData = () => {
     if (handle && handle.localStorage) {
       return handle.localStorage.getItem("data");
-    } else if (typeof localStorage !== "") {
-      return localStorage.getItem("data");
+    } else {
+      const values = Object.fromEntries(
+        document.cookie
+          .split(";")
+          .map((k) => k.trim().split("=").map(decodeURIComponent)),
+      );
+      return values["data"];
     }
   };
 
@@ -23,33 +26,36 @@ function mountHandle(handle) {
     lastValue = data;
     if (handle && handle.localStorage) {
       handle.localStorage.setItem("data", data);
-    }
-    if (channel) {
-      channel.postMessage(data.value);
-    }
-    if (localStorage) {
-      localStorage.setItem("data", data);
+    } else {
+      document.cookie =
+        "data=" + encodeURIComponent(data) + ";SameSite=None;Path=/;Secure";
     }
   };
 
   let lastValue = getData();
 
-  if (handle && handle.BroadcastChannel) {
-    channel = handle.BroadcastChannel("data");
-    channel.addEventListener("message", (event) => {
-      postToParent(getData());
+  if (handle && handle.localStorage) {
+    window.addEventListener("storage", (event) => {
+      if (event.key === "data") {
+        console.log("storage");
+        postToParent(event.newValue);
+      }
     });
-  } else if (typeof BroadcastChannel !== "undefined") {
-    channel = new BroadcastChannel("data");
-    channel.addEventListener("message", (event) => {
+  } else if (window.cookieStore) {
+    cookieStore.onchange = (e) => {
+      console.log("cookie change", e);
       postToParent(getData());
-    });
+    };
+  } else {
+    setInterval(() => {
+      let newData = getData();
+      if (newData !== lastValue) {
+        console.log("polling");
+        lastValue = newData;
+        postToParent(newData);
+      }
+    }, 50);
   }
-  window.addEventListener("storage", (event) => {
-    if (event.key === "data") {
-      postToParent(event.newValue);
-    }
-  });
 
   postToParent(lastValue);
 
@@ -65,7 +71,7 @@ function mountHandle(handle) {
         }
       }
     },
-    false
+    false,
   );
 
   if (button.parentNode) {
@@ -73,28 +79,23 @@ function mountHandle(handle) {
   }
 }
 
+function makeStorageRequest(successCallback, errorCallback) {
+  document.requestStorageAccess({ all: true }).then((handle) => {
+    document.cookie = "test=42;SameSite=None;Path=/;Secure;Max-Age=10";
+    if (document.cookie === "") {
+      errorCallback("Test cookie not set");
+    } else {
+      successCallback(handle);
+    }
+  }, errorCallback);
+}
+
 function retryMountHandle() {
   makeStorageRequest(
     (handle) => mountHandle(handle),
     (err) => {
       console.error(err);
-    }
-  );
-}
-
-function makeStorageRequest(successCallback, errorCallback) {
-  document.requestStorageAccess({ all: true }).then(
-    (handle) => {
-      document.cookie = "test=42;SameSite=None;Path=/;Secure";
-      if (document.cookie === "") {
-        errorCallback("Test cookie not set");
-      } else {
-        successCallback(handle);
-      }
     },
-    (err) => {
-      errorCallback(err);
-    }
   );
 }
 
@@ -113,7 +114,7 @@ if (url.searchParams.get("authPopup")) {
         window.opener.retryMountHandle();
         window.close();
       },
-      () => {}
+      () => {},
     );
   };
   document.body.appendChild(button);
