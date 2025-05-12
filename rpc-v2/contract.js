@@ -149,7 +149,7 @@ if (url.searchParams.get("authPopup")) {
   button.onclick = () => {
     makeStorageRequest(
       () => {
-        (window.opener || window.parent).retryMountHandle();
+        if(window.opener) window.opener.retryMountHandle();
         window.close();
       },
       () => {},
@@ -160,7 +160,19 @@ if (url.searchParams.get("authPopup")) {
   const launchPopup = () => {
     let popupUrl = new URL(location.href);
     popupUrl.searchParams.set("authPopup", "true");
-    window.open(popupUrl, "_blank", "width=300,height=200,top=100,popup");
+    if(!window.open(popupUrl, "_blank", "width=300,height=200,top=100,popup")){
+      console.log("no opener available");
+      const autoRetry = () => {
+         makeStorageRequest(
+          (handle) => mountHandle(handle),
+          (err) => {
+            console.error(err);
+            setTimeout(autoRetry, 500);
+          },
+        );
+      }
+      setTimeout(autoRetry, 1000);
+    }
   };
   const showRequestButton = () => {
     const button = document.createElement("button");
