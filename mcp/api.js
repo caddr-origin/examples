@@ -311,8 +311,6 @@ window.addEventListener(
   false
 );
 
-const contractURL = new URL("contract.js", location.href);
-contractURL.searchParams.set("date", Date.now());
 let hostOrigin = "";
 let hasBroadcastChannel = false;
 
@@ -337,15 +335,30 @@ caddrFrame.frameBorder = 0;
 caddrFrame.style.width = "100%";
 caddrFrame.style.height = "80px";
 
-async function registerMCPServer(info) {
-  const hash32 = await getHash32(contractURL);
+async function configureFrame() {
+  const searchParams = new URLSearchParams(location.search);
+  let contractURL = new URL("contract.js", location.href);
+  if (searchParams.get("dev")) {
+    contractURL.searchParams.set("date", Date.now());
+    const hash32 = await getHash32(contractURL);
+    hostOrigin = "https://" + hash32 + ".caddr.org";
+  } else {
+    contractURL = new URL(
+      "https://caddr-origin.github.io/examples/mcp/contract.js"
+    );
+    hostOrigin =
+      "https://ncljlls7wijmmgmb77jv75u4vwydwmi6py72att437tkb4ne7flq.caddr.org";
+  }
 
-  hostOrigin = "https://" + hash32 + ".caddr.org";
   let url = new URL(hostOrigin);
   url.searchParams.set("src", contractURL);
-  if (new URLSearchParams(location.search).get("useRedirect"))
+  if (searchParams.get("useRedirect"))
     url.searchParams.set("useRedirect", "true");
   caddrFrame.setAttribute("src", url);
+}
+
+async function registerMCPServer(info) {
+  await configureFrame();
 
   for (let tool of info.tools) {
     requestHandlers[tool.name] = tool.execute;
@@ -369,14 +382,7 @@ async function registerMCPServer(info) {
 }
 
 async function registerMCPClient(info) {
-  const hash32 = await getHash32(contractURL);
-
-  hostOrigin = "https://" + hash32 + ".caddr.org";
-  let url = new URL(hostOrigin);
-  url.searchParams.set("src", contractURL);
-  if (new URLSearchParams(location.search).get("useRedirect"))
-    url.searchParams.set("useRedirect", "true");
-  caddrFrame.setAttribute("src", url);
+  await configureFrame();
 
   let serverState = {};
   Object.assign(requestHandlers, {
