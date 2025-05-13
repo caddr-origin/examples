@@ -521,7 +521,10 @@
 
         // Set up server listeners
         setupServerListeners();
-        updateServerList();
+
+        setTimeout(() => {
+          updateServerList();
+        }, 500);
       }
 
       // Toggle sidebar visibility
