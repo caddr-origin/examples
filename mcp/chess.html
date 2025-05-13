@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CADDR-MCP Chess Server</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <style>
+      #chessboard {
+        display: grid;
+        grid-template-columns: repeat(8, 1fr);
+        max-width: 600px;
+        margin: 0 auto;
+      }
+      .square {
+        width: 100%;
+        padding-bottom: 100%;
+        position: relative;
+      }
+      .light {
+        background-color: #f0d9b5;
+      }
+      .dark {
+        background-color: #b58863;
+      }
+      .piece {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 2rem;
+        cursor: pointer;
+      }
+      .selected {
+        outline: 3px solid #f59e0b;
+      }
+    </style>
+  </head>
+  <body class="bg-gray-100 min-h-screen p-6">
+    <div class="max-w-4xl mx-auto bg-white rounded-xl shadow-md p-6">
+      <h1 class="text-3xl font-bold text-center mb-6 text-gray-800">
+        CADDR-MCP Chess Server
+      </h1>
+      <iframe
+        id="caddrFrame"
+        frameborder="0"
+        class="w-full max-w-md h-20 mx-auto mb-6 border border-gray-300 rounded"
+      ></iframe>
+      <div class="board-container">
+        <div id="chessboard"></div>
+        <div class="status-container bg-gray-100 mt-4 p-2 rounded">
+          <p id="status" class="text-lg text-center font-medium text-gray-700">
+            White to move
+          </p>
+        </div>
+        <div class="chess-controls mt-4 flex justify-center gap-4">
+          <button
+            id="resetBtn"
+            class="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded"
+          >
+            Reset Game
+          </button>
+          <button
+            id="undoBtn"
+            class="bg-gray-500 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded"
+          >
+            Undo Move
+          </button>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+        <div class="bg-gray-100 p-4 rounded-lg">
+          <h2 class="text-xl font-semibold mb-2">Move History</h2>
+          <div
+            id="moveHistory"
+            class="move-history max-h-48 overflow-y-auto bg-white rounded border border-gray-300 p-2 font-mono text-sm"
+          ></div>
+        </div>
+        <div class="bg-gray-100 p-4 rounded-lg">
+          <h2 class="text-xl font-semibold mb-2">Board Status</h2>
+          <div
+            id="dataBox"
+            class="bg-white p-3 rounded border border-gray-300 font-mono text-sm whitespace-pre-wrap"
+          ></div>
+        </div>
+      </div>
+    </div>
+    <script src="api.js"></script>
+    <script>
+      const chess = new Chess();
+      const boardEl = document.getElementById("chessboard");
+      const statusEl = document.getElementById("status");
+      const historyEl = document.getElementById("moveHistory");
+      const dataEl = document.getElementById("dataBox");
+      let selected = null;
+      const unicodeMap = {
+        p: { w: "\u2659", b: "\u265F" },
+        r: { w: "\u2656", b: "\u265C" },
+        n: { w: "\u2658", b: "\u265E" },
+        b: { w: "\u2657", b: "\u265D" },
+        q: { w: "\u2655", b: "\u265B" },
+        k: { w: "\u2654", b: "\u265A" },
+      };
+
+      function renderBoard() {
+        boardEl.innerHTML = "";
+        const board = chess.board();
+        for (let i = 0; i < 8; i++) {
+          for (let j = 0; j < 8; j++) {
+            const sq = document.createElement("div");
+            sq.className = "square " + ((i + j) % 2 ? "dark" : "light");
+            const file = String.fromCharCode(97 + j),
+              rank = 8 - i;
+            sq.dataset.square = file + rank;
+            if (selected === sq.dataset.square) sq.classList.add("selected");
+            sq.addEventListener("click", onSquareClick);
+            const p = board[i][j];
+            if (p) {
+              const span = document.createElement("span");
+              span.textContent = unicodeMap[p.type][p.color];
+              span.className = "piece";
+              sq.appendChild(span);
+            }
+            boardEl.appendChild(sq);
+          }
+        }
+      }
+
+      function onSquareClick(evt) {
+        const sq = evt.currentTarget.dataset.square;
+        const piece = chess.get(sq);
+        if (!selected) {
+          if (piece && piece.color === chess.turn()) {
+            selected = sq;
+            renderBoard();
+          }
+        } else {
+          if (sq === selected) {
+            selected = null;
+            renderBoard();
+            return;
+          }
+          const move = chess.move({ from: selected, to: sq, promotion: "q" });
+          selected = null;
+          if (move) {
+            updateAll();
+          } else {
+            renderBoard();
+          }
+        }
+      }
+
+      function updateStatus() {
+        let s = "",
+          turn = chess.turn() === "w" ? "White" : "Black";
+        if (chess.in_checkmate()) s = `Game over, ${turn} is in checkmate`;
+        else if (chess.in_draw()) s = "Game over, drawn position";
+        else {
+          s =
+            `${turn} to move` +
+            (chess.in_check() ? `, ${turn} is in check` : ``);
+        }
+        statusEl.textContent = s;
+      }
+
+      function updateHistory() {
+        const h = chess.history();
+        let html = "";
+        for (let i = 0; i < h.length; i += 2) {
+          const num = Math.floor(i / 2) + 1;
+          html += `<div>${num}. ${h[i]} ${h[i + 1] || ""}</div>`;
+        }
+        historyEl.innerHTML = html;
+        historyEl.scrollTop = historyEl.scrollHeight;
+      }
+
+      function getBoardAsText() {
+        const b = chess.board(),
+          lines = [];
+        for (let i = 0; i < 8; i++) {
+          for (let j = 0; j < 8; j++) {
+            const p = b[i][j];
+            if (p) {
+              const col = p.color === "w" ? "White" : "Black";
+              const names = {
+                p: "Pawn",
+                n: "Knight",
+                b: "Bishop",
+                r: "Rook",
+                q: "Queen",
+                k: "King",
+              };
+              lines.push(
+                `${String.fromCharCode(97 + j)}${8 - i}: ${col} ${
+                  names[p.type]
+                }`
+              );
+            }
+          }
+        }
+        lines.push(`\nTurn: ${chess.turn() === "w" ? "White" : "Black"}`);
+        lines.push(`FEN: ${chess.fen()}`);
+        if (chess.in_check())
+          lines.push(
+            `${chess.turn() === "w" ? "White" : "Black"} is in check.`
+          );
+        if (chess.in_checkmate())
+          lines.push(
+            `${chess.turn() === "w" ? "White" : "Black"} is in checkmate.`
+          );
+        if (chess.in_draw()) lines.push("Game is drawn.");
+        return lines.join("\n");
+      }
+
+      function updateData() {
+        dataEl.textContent = getBoardAsText();
+      }
+
+      function updateAll() {
+        renderBoard();
+        updateStatus();
+        updateHistory();
+        updateData();
+      }
+
+      document.getElementById("resetBtn").onclick = () => {
+        chess.reset();
+        selected = null;
+        updateAll();
+      };
+      document.getElementById("undoBtn").onclick = () => {
+        chess.undo();
+        selected = null;
+        updateAll();
+      };
+
+      document.addEventListener("DOMContentLoaded", updateAll);
+
+      async function describeServer() {
+        return {
+          name: "chess",
+          version: "1.0.0",
+          tools: [
+            {
+              name: "get_board_state",
+              description:
+                "Gets the current state of the chess board in text form",
+              input_schema: { type: "object", properties: {}, required: [] },
+            },
+            {
+              name: "make_move",
+              description:
+                "Makes a move on the chess board using algebraic notation",
+              input_schema: {
+                type: "object",
+                properties: {
+                  move: {
+                    type: "string",
+                    description:
+                      "The move in algebraic notation (e.g., 'e2e4')",
+                  },
+                },
+                required: ["move"],
+              },
+            },
+          ],
+        };
+      }
+      function hideAuthorizationFrame() {
+        caddrFrame.style.position = "absolute";
+        caddrFrame.style.top = "-10000px";
+        caddrFrame.style.left = "-10000px";
+      }
+      Object.assign(requestHandlers, {
+        async get_board_state(sender) {
+          return getBoardAsText();
+        },
+        async make_move(sender, params) {
+          const m = chess.move(params.move);
+          if (!m) return { success: false, message: "Invalid move" };
+          updateAll();
+          return { success: true, move: m, boardState: getBoardAsText() };
+        },
+        async gimmeStuff(sender) {
+          await NOTIFY(sender.from, "addServer", await describeServer());
+        },
+        async onConnect(sender, params) {
+          if (sender.from === "") {
+            hasBroadcastChannel = params.hasBroadcastChannel;
+            hideAuthorizationFrame();
+            await NOTIFY("*", "newServerAdded", null);
+          }
+        },
+      });
+    </script>
+  </body>
+</html>
