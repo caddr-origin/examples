@@ -123,6 +123,18 @@
         font-weight: 600;
       }
 
+      .no-servers-message {
+        padding: 1rem;
+        background-color: #f8f9fa;
+        border: 1px dashed #dee2e6;
+        border-radius: 4px;
+        margin-top: 1rem;
+        font-size: 0.9rem;
+        color: #6c757d;
+        text-align: center;
+        line-height: 1.5;
+      }
+
       .server-list {
         list-style: none;
       }
@@ -509,6 +521,7 @@
 
         // Set up server listeners
         setupServerListeners();
+        updateServerList();
       }
 
       // Toggle sidebar visibility
@@ -574,6 +587,19 @@
       function updateServerList() {
         elements.serverList.innerHTML = "";
 
+        // Check if there are any servers
+        if (Object.keys(state.servers).length === 0) {
+          // Display a message when no servers are available
+          const noServersMsg = document.createElement("div");
+          noServersMsg.className = "no-servers-message";
+          noServersMsg.innerHTML = `
+            <p>No servers are currently available.</p>
+            <p>Open server applications in different tabs or windows, and they will automatically appear here.</p>
+          `;
+          elements.serverList.appendChild(noServersMsg);
+          return;
+        }
+
         Object.entries(state.servers).forEach(([serverId, serverInfo]) => {
           const serverItem = document.createElement("li");
           serverItem.className = "server-item";
@@ -581,12 +607,14 @@
           const serverHeader = document.createElement("div");
           serverHeader.className = "server-header";
 
-          // Include server ID, name and origin in the header
+          // Format display to show name and origin, with ID as title attribute
           const serverName = serverInfo.name || "Unknown";
           const serverOrigin = serverInfo.fromOrigin || "";
-          serverHeader.textContent = `${serverId} (${serverName}) ${
-            serverOrigin ? `- ${serverOrigin}` : ""
-          }`;
+          const displayText =
+            serverName + (serverOrigin ? ` (${serverOrigin})` : "");
+
+          serverHeader.textContent = displayText;
+          serverHeader.title = `Server ID: ${serverId}`; // Show ID on hover
 
           serverHeader.addEventListener("click", () => {
             const toolsList = serverItem.querySelector(".server-tools");
@@ -602,9 +630,8 @@
             serverInfo.tools.forEach((tool) => {
               const toolItem = document.createElement("div");
               toolItem.className = "tool-item";
-              toolItem.textContent = `${tool.name}: ${
-                tool.description || "No description"
-              }`;
+              toolItem.textContent = tool.name;
+              toolItem.title = tool.description || "No description";
               toolsList.appendChild(toolItem);
             });
           } else {
