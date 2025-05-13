@@ -1,31 +1,12 @@
-let servers = {};
 let channels = {};
-
-function showServers() {
-  dataBox.innerText = "";
-  for (let info of Object.values(servers)) {
-    const block = document.createElement("div");
-    block.innerText = `${info.from} (${info.fromOrigin})`;
-    for (let method of info.result) {
-      const button = document.createElement("button");
-      button.innerText = method;
-      button.addEventListener("click", () => {
-        RPC(info.from, method, prompt("Input for " + method)).then((result) => {
-          alert(JSON.stringify(result));
-        });
-      });
-      block.appendChild(button);
-    }
-    dataBox.appendChild(block);
-  }
-}
+let peers = {};
+let senders = {};
 
 function setupDataChannel(clientId, channel) {
   channels[clientId] = new Promise((resolve, reject) => {
     channel.onopen = () => {
       console.log("Channel is open!");
       resolve(channel);
-      // channel.send("Hello from Peer!");
     };
 
     channel.onmessage = (event) => {
@@ -42,7 +23,7 @@ function setupDataChannel(clientId, channel) {
     };
   });
 }
-let senders = {};
+
 async function connectDataChannel(clientId) {
   const peerA = new RTCPeerConnection({
     //   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
@@ -81,7 +62,6 @@ async function connectDataChannel(clientId) {
   };
 }
 
-let peers = {};
 const requestHandlers = {
   showAuthorizationPrompt() {},
   async echo(sender, data) {
@@ -131,34 +111,11 @@ const requestHandlers = {
       fromOrigin: sender.fromOrigin,
       result: methods,
     };
-    // showServers();
     return await requestHandlers.listMethods();
-  },
-  async markAlive(sender, clientIds) {
-    for (let key in servers) {
-      if (!clientIds.includes(key) && key !== sender.from) {
-        delete servers[key];
-      }
-    }
-    // showServers();
   },
   async onConnect(sender, params) {
     if (sender.from === "") {
       hasBroadcastChannel = params.hasBroadcastChannel;
-      // hideAuthorizationFrame();
-      // dataBox.innerText = "Listing methods...";
-
-      const allServers = await RPC(
-        "*",
-        "addServer",
-        await requestHandlers.listMethods()
-      );
-      servers = {};
-      for (let info of allServers) {
-        servers[info.from] = info;
-      }
-      await NOTIFY("*", "markAlive", Object.keys(servers));
-      // showServers();
     }
   },
 };
@@ -414,24 +371,6 @@ async function registerMCPClient(info) {
       }
     },
   });
-
-  // for (let tool of info.tools) {
-  //   requestHandlers[tool.name] = tool.execute;
-  // }
-  // const describeServer = () => JSON.parse(JSON.stringify(info));
-  // Object.assign(requestHandlers, {
-  //   showAuthorizationFrame: info.showAuthorizationFrame,
-  //   async gimmeStuff(sender) {
-  //     await NOTIFY(sender.from, "addServer", describeServer());
-  //   },
-  //   async onConnect(sender, params) {
-  //     if (sender.from === "") {
-  //       hasBroadcastChannel = params.hasBroadcastChannel;
-  //       info.hideAuthorizationFrame();
-  //       await NOTIFY("*", "newServerAdded", null);
-  //     }
-  //   },
-  // });
 
   info.insertFrame(caddrFrame);
 }
