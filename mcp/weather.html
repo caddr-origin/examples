@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>caddr.org iframe communication</title>
+  </head>
+  <body>
+    <h1>CADDR-MCP Weather Server</h1>
+    <iframe
+      id="caddrFrame"
+      frameborder="0"
+      style="width: 300px; height: 80px"
+    ></iframe>
+
+    <br />
+
+    <div id="dataBox"></div>
+    <script src="api.js"></script>
+
+    <script>
+      async function describeServer() {
+        return {
+          name: "weather",
+          version: "1.0.0",
+          // capabilities: {
+          //   resources: {},
+          //   tools: {},
+          // },
+          tools: [
+            {
+              name: "get_weather",
+              description:
+                "Gets the current weather in a city. Returns temperature in Fahrenheit.",
+              input_schema: {
+                type: "object",
+                properties: {
+                  city: {
+                    type: "string",
+                    description: `The name of the city to get the weather for.
+                      `,
+                  },
+                },
+                required: ["city"],
+              },
+            },
+          ],
+        };
+      }
+
+      Object.assign(requestHandlers, {
+        async get_weather(sender, params) {
+          return 72.6;
+        },
+        async listMethods() {
+          return await describeServer();
+        },
+        async gimmeStuff(sender) {
+          await NOTIFY(sender.from, "addServer", await describeServer());
+        },
+        async onConnect(sender, params) {
+          if (sender.from === "") {
+            hasBroadcastChannel = params.hasBroadcastChannel;
+            // hideAuthorizationFrame();
+            // dataBox.innerText = "Listing methods...";
+            await NOTIFY("*", "newServerAdded", null);
+          }
+        },
+      });
+    </script>
+  </body>
+</html>

@@ -6,7 +6,7 @@
     <title>caddr.org iframe communication</title>
   </head>
   <body>
-    <h1>CADDR-MCP Server</h1>
+    <h1>CADDR-MCP Stock Price Server</h1>
     <iframe
       id="caddrFrame"
       frameborder="0"
@@ -19,15 +19,6 @@
     <script src="api.js"></script>
 
     <script>
-      // const server = new McpServer({
-      //   name: "weather",
-      //   version: "1.0.0",
-      //   capabilities: {
-      //     resources: {},
-      //     tools: {},
-      //   },
-      // });
-
       async function describeServer() {
         return {
           name: "stock price",
@@ -579,27 +570,8 @@ ZTS 	Zoetis 	Health Care 	Pharmaceuticals 	Parsippany, New Jersey 	2013-06-21 	0
             // hideAuthorizationFrame();
             // dataBox.innerText = "Listing methods...";
             await NOTIFY("*", "newServerAdded", null);
-            // const allServers = await RPC(
-            //   "*",
-            //   "addServer",
-            //   await requestHandlers.listMethods()
-            // );
-            // servers = {};
-            // for (let info of allServers) {
-            //   servers[info.from] = info;
-            // }
-            // await NOTIFY("*", "markAlive", Object.keys(servers));
-            // showServers();
           }
         },
-        // async onConnect(sender, params) {
-        //   if (sender.from === "") {
-        //     console.log("my custom on connect called");
-        //     // hideAuthorizationFrame();
-        //     await NOTIFY("*", "addServer", null);
-        //     console.log("trying to notify");
-        //   }
-        // },
       });
     </script>
   </body>
