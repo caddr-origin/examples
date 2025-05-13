@@ -70,13 +70,17 @@
         ></div>
       </div>
     </div>
-    <!-- The iframe for caddrFrame -->
-    <iframe
-      id="caddrFrame"
-      frameborder="0"
-      style="width: 300px; height: 80px"
-      class="fixed bottom-4 right-4 z-50 border rounded shadow bg-white"
-    ></iframe>
+
+    <!-- Authorization Frame -->
+    <div
+      id="authorizationFrame"
+      style="display: none"
+      class="fixed bottom-4 right-4 z-50 border rounded shadow bg-white w-[300px] h-[80px]"
+    >
+      <h1>Authorization</h1>
+      <p>Please authorize this server to access your python data.</p>
+    </div>
+
     <div id="dataBox"></div>
     <!-- Modal for output if needed -->
     <div
@@ -239,56 +243,44 @@ result = {'stdout': stdout_buf.getvalue() + stderr_buf.getvalue(), 'images': img
       };
 
       // --- CADDR-MCP Server Protocol ---
-      async function describeServer() {
-        return {
-          name: "python-exec",
-          version: "1.0.0",
-          tools: [
-            {
-              name: "run_python",
-              description:
-                "Run a snippet of Python code. Captures stdout, and any images generated via matplotlib.pyplot. Output is a JSON object with keys 'stdout', and 'images' (base64 PNG, if any).",
-              input_schema: {
-                type: "object",
-                properties: {
-                  code: {
-                    type: "string",
-                    description:
-                      "Python code to run. May contain code that prints or creates matplotlib figures.",
-                  },
+      registerMCPServer({
+        insertFrame: (frame) => {
+          document.getElementById("authorizationFrame").appendChild(frame);
+        },
+        showAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "block";
+        },
+        hideAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "none";
+        },
+        name: "python-exec",
+        version: "1.0.0",
+        tools: [
+          {
+            name: "run_python",
+            description:
+              "Run a snippet of Python code. Captures stdout, and any images generated via matplotlib.pyplot. Output is a JSON object with keys 'stdout', and 'images' (base64 PNG, if any).",
+            input_schema: {
+              type: "object",
+              properties: {
+                code: {
+                  type: "string",
+                  description:
+                    "Python code to run. May contain code that prints or creates matplotlib figures.",
                 },
-                required: ["code"],
               },
+              required: ["code"],
             },
-          ],
-        };
-      }
-
-      function hideAuthorizationFrame() {
-        caddrFrame.style.position = "absolute";
-        caddrFrame.style.top = "-10000px";
-        caddrFrame.style.left = "-10000px";
-      }
-
-      Object.assign(requestHandlers, {
-        async run_python(sender, params) {
-          await ensurePyodide();
-          const result = await runPythonCapture(params.code);
-          displayPythonOutput(result);
-          const obj = Object.fromEntries(result.toJs().entries());
-          delete obj.images;
-          return obj;
-        },
-        async gimmeStuff(sender) {
-          await NOTIFY(sender.from, "addServer", await describeServer());
-        },
-        async onConnect(sender, params) {
-          if (sender.from === "") {
-            hasBroadcastChannel = params.hasBroadcastChannel;
-            hideAuthorizationFrame();
-            await NOTIFY("*", "newServerAdded", null);
-          }
-        },
+            async execute(sender, params) {
+              await ensurePyodide();
+              const result = await runPythonCapture(params.code);
+              displayPythonOutput(result);
+              const obj = Object.fromEntries(result.toJs().entries());
+              delete obj.images;
+              return obj;
+            },
+          },
+        ],
       });
 
       // --- Demo: Run a default script for demonstration

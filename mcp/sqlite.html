@@ -24,11 +24,14 @@
         <h1 class="text-3xl font-bold text-gray-800">
           CADDR-MCP SQLite Server
         </h1>
-        <iframe
-          id="caddrFrame"
-          frameborder="0"
-          class="w-[300px] h-[80px]"
-        ></iframe>
+        <div
+          id="authorizationFrame"
+          style="display: none"
+          class="w-[300px] h-[80px] border rounded p-2"
+        >
+          <h1>Authorization</h1>
+          <p>Please authorize this server to access your SQLite data.</p>
+        </div>
       </div>
 
       <div class="bg-white rounded-lg shadow-md p-6 mb-6">
@@ -307,99 +310,83 @@ SELECT name FROM sqlite_master WHERE type='table';</textarea
         );
       }
 
-      async function describeServer() {
-        return {
-          name: "sqlite-server",
-          version: "1.0.0",
-          tools: [
-            {
-              name: "run_sql_query",
-              description:
-                "Runs a SQL query against the currently loaded SQLite database.",
-              input_schema: {
-                type: "object",
-                properties: {
-                  query: {
-                    type: "string",
-                    description:
-                      "The SQL query to execute against the database.",
-                  },
+      registerMCPServer({
+        insertFrame: (frame) => {
+          document.getElementById("authorizationFrame").appendChild(frame);
+        },
+        showAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "block";
+        },
+        hideAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "none";
+        },
+        name: "sqlite-server",
+        version: "1.0.0",
+        tools: [
+          {
+            name: "run_sql_query",
+            description:
+              "Runs a SQL query against the currently loaded SQLite database.",
+            input_schema: {
+              type: "object",
+              properties: {
+                query: {
+                  type: "string",
+                  description: "The SQL query to execute against the database.",
                 },
-                required: ["query"],
               },
+              required: ["query"],
             },
-            {
-              name: "list_tables",
-              description:
-                "Lists all tables in the currently loaded SQLite database.",
-              input_schema: {
-                type: "object",
-                properties: {},
-              },
+            async execute(sender, params) {
+              if (!db) {
+                return { error: "No database loaded" };
+              }
+
+              try {
+                const results = db.exec(params.query);
+                return {
+                  success: true,
+                  results: results.map((result) => ({
+                    columns: result.columns,
+                    values: result.values,
+                  })),
+                };
+              } catch (err) {
+                return {
+                  error: err.message,
+                };
+              }
             },
-          ],
-        };
-      }
+          },
+          {
+            name: "list_tables",
+            description:
+              "Lists all tables in the currently loaded SQLite database.",
+            input_schema: {
+              type: "object",
+              properties: {},
+            },
+            async execute(sender) {
+              if (!db) {
+                return { error: "No database loaded" };
+              }
 
-      function hideAuthorizationFrame() {
-        caddrFrame.style.position = "absolute";
-        caddrFrame.style.top = "-10000px";
-        caddrFrame.style.left = "-10000px";
-      }
-
-      Object.assign(requestHandlers, {
-        async run_sql_query(sender, params) {
-          if (!db) {
-            return { error: "No database loaded" };
-          }
-
-          try {
-            const results = db.exec(params.query);
-            return {
-              success: true,
-              results: results.map((result) => ({
-                columns: result.columns,
-                values: result.values,
-              })),
-            };
-          } catch (err) {
-            return {
-              error: err.message,
-            };
-          }
-        },
-
-        async list_tables(sender) {
-          if (!db) {
-            return { error: "No database loaded" };
-          }
-
-          try {
-            const results = db.exec(
-              "SELECT name FROM sqlite_master WHERE type='table';"
-            );
-            return {
-              success: true,
-              tables: results[0]?.values?.flat() || [],
-            };
-          } catch (err) {
-            return {
-              error: err.message,
-            };
-          }
-        },
-
-        async gimmeStuff(sender) {
-          await NOTIFY(sender.from, "addServer", await describeServer());
-        },
-
-        async onConnect(sender, params) {
-          if (sender.from === "") {
-            hasBroadcastChannel = params.hasBroadcastChannel;
-            hideAuthorizationFrame();
-            await NOTIFY("*", "newServerAdded", null);
-          }
-        },
+              try {
+                const results = db.exec(
+                  "SELECT name FROM sqlite_master WHERE type='table';"
+                );
+                return {
+                  success: true,
+                  tables: results[0]?.values?.flat() || [],
+                };
+              } catch (err) {
+                return {
+                  error: err.message,
+                };
+              }
+            },
+          },
+        ],
       });
     </script>
   </body>

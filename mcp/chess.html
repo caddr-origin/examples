@@ -42,11 +42,16 @@
       <h1 class="text-3xl font-bold text-center mb-6 text-gray-800">
         CADDR-MCP Chess Server
       </h1>
-      <iframe
-        id="caddrFrame"
-        frameborder="0"
-        class="w-full max-w-md h-20 mx-auto mb-6 border border-gray-300 rounded"
-      ></iframe>
+
+      <div
+        id="authorizationFrame"
+        style="display: none"
+        class="w-full max-w-md mx-auto mb-6"
+      >
+        <h1>Authorization</h1>
+        <p>Please authorize this server to access your chess data.</p>
+      </div>
+
       <div class="board-container">
         <div id="chessboard"></div>
         <div class="status-container bg-gray-100 mt-4 p-2 rounded">
@@ -237,61 +242,50 @@
 
       document.addEventListener("DOMContentLoaded", updateAll);
 
-      async function describeServer() {
-        return {
-          name: "chess",
-          version: "1.0.0",
-          tools: [
-            {
-              name: "get_board_state",
-              description:
-                "Gets the current state of the chess board in text form",
-              input_schema: { type: "object", properties: {}, required: [] },
+      registerMCPServer({
+        insertFrame: (frame) => {
+          document.getElementById("authorizationFrame").appendChild(frame);
+        },
+        showAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "block";
+        },
+        hideAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "none";
+        },
+        name: "chess",
+        version: "1.0.0",
+        tools: [
+          {
+            name: "get_board_state",
+            description:
+              "Gets the current state of the chess board in text form",
+            input_schema: { type: "object", properties: {}, required: [] },
+            async execute(sender) {
+              return getBoardAsText();
             },
-            {
-              name: "make_move",
-              description:
-                "Makes a move on the chess board using algebraic notation",
-              input_schema: {
-                type: "object",
-                properties: {
-                  move: {
-                    type: "string",
-                    description:
-                      "The move in algebraic notation (e.g., 'e2e4')",
-                  },
+          },
+          {
+            name: "make_move",
+            description:
+              "Makes a move on the chess board using algebraic notation",
+            input_schema: {
+              type: "object",
+              properties: {
+                move: {
+                  type: "string",
+                  description: "The move in algebraic notation (e.g., 'e2e4')",
                 },
-                required: ["move"],
               },
+              required: ["move"],
             },
-          ],
-        };
-      }
-      function hideAuthorizationFrame() {
-        caddrFrame.style.position = "absolute";
-        caddrFrame.style.top = "-10000px";
-        caddrFrame.style.left = "-10000px";
-      }
-      Object.assign(requestHandlers, {
-        async get_board_state(sender) {
-          return getBoardAsText();
-        },
-        async make_move(sender, params) {
-          const m = chess.move(params.move);
-          if (!m) return { success: false, message: "Invalid move" };
-          updateAll();
-          return { success: true, move: m, boardState: getBoardAsText() };
-        },
-        async gimmeStuff(sender) {
-          await NOTIFY(sender.from, "addServer", await describeServer());
-        },
-        async onConnect(sender, params) {
-          if (sender.from === "") {
-            hasBroadcastChannel = params.hasBroadcastChannel;
-            hideAuthorizationFrame();
-            await NOTIFY("*", "newServerAdded", null);
-          }
-        },
+            async execute(sender, params) {
+              const m = chess.move(params.move);
+              if (!m) return { success: false, message: "Invalid move" };
+              updateAll();
+              return { success: true, move: m, boardState: getBoardAsText() };
+            },
+          },
+        ],
       });
     </script>
   </body>

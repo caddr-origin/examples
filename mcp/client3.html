@@ -183,9 +183,7 @@
 
       .message {
         max-width: 80%;
-        margin-bottom: 1.5rem;
-        padding: 1rem;
-        border-radius: 0.5rem;
+        margin-bottom: 0.75rem;
         line-height: 1.5;
         font-size: 0.95rem;
       }
@@ -195,48 +193,97 @@
         background-color: var(--user-bg);
         border: 1px solid var(--border-color);
         margin-left: auto;
+        border-radius: 0.5rem;
+        padding: 1rem;
       }
 
       .assistant-message {
         align-self: flex-start;
-        background-color: var(--assistant-bg);
-        border: 1px solid var(--border-color);
+        max-width: 100%;
+        /* Removed background, border and padding for assistant messages */
       }
 
       .message-container {
         display: flex;
         flex-direction: column;
-        margin-bottom: 1.5rem;
+        margin-bottom: 0.75rem;
       }
 
       .message-header {
         font-weight: 600;
         margin-bottom: 0.5rem;
         font-size: 0.9rem;
+        display: none; /* Hide the message headers */
+      }
+
+      /* New styles for collapsible tool interactions */
+      .tool-interaction {
+        border: 1px solid #e0e0e0;
+        border-radius: 0.25rem;
+        margin: 0.5rem 0;
+        overflow: hidden;
+      }
+
+      .tool-interaction-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.5rem;
+        background-color: #f5f5f5;
+        cursor: pointer;
+        font-size: 0.9rem;
+        font-weight: 500;
+      }
+
+      .tool-status {
+        margin-left: auto;
+      }
+
+      /* Spinner animation for tool in progress */
+      .tool-loading {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border: 2px solid rgba(0, 0, 0, 0.1);
+        border-radius: 50%;
+        border-top-color: #3498db;
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      .tool-interaction-body {
+        display: none;
+        padding: 0.5rem 1rem;
+        border-top: 1px solid #e0e0e0;
+      }
+
+      .tool-interaction-body.expanded {
+        display: block;
+      }
+
+      .tool-call,
+      .tool-result {
+        padding: 0.5rem 0.5rem;
+        font-family: monospace;
+        font-size: 0.85rem;
+        overflow-x: auto;
       }
 
       .tool-call {
-        background-color: #e6f7ff;
-        border: 1px solid #91d5ff;
-        border-radius: 0.5rem;
-        padding: 0.7rem;
-        margin-top: 0.5rem;
-        margin-bottom: 0.5rem;
-        font-family: monospace;
-        font-size: 0.85rem;
-        overflow-x: auto;
+        border-bottom: 1px dashed #e0e0e0;
       }
 
-      .tool-result {
-        background-color: #f6ffed;
-        border: 1px solid #b7eb8f;
-        border-radius: 0.5rem;
-        padding: 0.7rem;
-        margin-top: 0.5rem;
-        margin-bottom: 0.5rem;
-        font-family: monospace;
-        font-size: 0.85rem;
-        overflow-x: auto;
+      .tool-call pre,
+      .tool-result pre {
+        margin: 0.5rem 0;
       }
 
       .input-container {
@@ -313,11 +360,12 @@
         margin-top: 0.5rem;
         font-size: 0.9rem;
         color: #666;
+        justify-content: flex-start;
       }
 
       .thinking-dots {
         display: flex;
-        margin-left: 0.5rem;
+        margin-left: 0; /* Remove left margin since there's no text anymore */
       }
 
       .dot {
@@ -356,18 +404,20 @@
   <body>
     <header>
       <button id="sidebarToggle" class="sidebar-toggle">☰</button>
-      <div class="logo">Claude Interface</div>
-      <div id="apiKeyStatus"></div>
     </header>
 
     <div class="main-container">
       <div id="sidebar" class="sidebar">
-        <div class="api-key-section">
-          <h3>Caddr Frame</h3>
+        <div
+          class="api-key-section"
+          id="caddrFrameContainer"
+          style="display: none"
+        >
+          <h3>Grant Caddr-MCP Access</h3>
           <iframe
             id="caddrFrame"
             frameborder="0"
-            style="width: 300px; height: 80px"
+            style="width: 100%; height: 80px"
           ></iframe>
         </div>
         <div class="api-key-section">
@@ -395,8 +445,8 @@
           <div class="message-container">
             <div class="message-header">Assistant</div>
             <div class="message assistant-message">
-              Hello! I'm a Claude-like interface. Enter your API key in the
-              sidebar to get started, and I'll be ready to help you.
+              Hello! Enter your API key in the sidebar to get started, and I'll
+              be ready to help you.
             </div>
           </div>
         </div>
@@ -431,7 +481,7 @@
         sidebar: document.getElementById("sidebar"),
         apiKeyInput: document.getElementById("apiKeyInput"),
         saveApiKey: document.getElementById("saveApiKey"),
-        apiKeyStatus: document.getElementById("apiKeyStatus"),
+        // apiKeyStatus: document.getElementById("apiKeyStatus"),
         serverList: document.getElementById("serverList"),
         messagesContainer: document.getElementById("messagesContainer"),
         promptInput: document.getElementById("promptInput"),
@@ -449,8 +499,8 @@
         // Load API key from localStorage
         if (state.apiKey) {
           elements.apiKeyInput.value = "••••••••••••••••••••••••••";
-          elements.apiKeyStatus.innerHTML =
-            '<span class="status-indicator status-success">API Key Saved</span>';
+          // elements.apiKeyStatus.innerHTML =
+          //   '<span class="status-indicator status-success">API Key Saved</span>';
           elements.sendButton.disabled = false;
         }
 
@@ -473,12 +523,12 @@
           localStorage.setItem("ANTHROPIC_API_KEY", apiKey);
           state.apiKey = apiKey;
           elements.apiKeyInput.value = "••••••••••••••••••••••••••";
-          elements.apiKeyStatus.innerHTML =
-            '<span class="status-indicator status-success">API Key Saved</span>';
+          // elements.apiKeyStatus.innerHTML =
+          //   '<span class="status-indicator status-success">API Key Saved</span>';
           elements.sendButton.disabled = false;
         } else {
-          elements.apiKeyStatus.innerHTML =
-            '<span class="status-indicator status-error">Invalid API Key</span>';
+          // elements.apiKeyStatus.innerHTML =
+          //   '<span class="status-indicator status-error">Invalid API Key</span>';
         }
       }
 
@@ -501,95 +551,24 @@
         // Set up the request handlers for the iframe communication
         // We assume RPC is defined in the external api.js
 
-        Object.assign(requestHandlers, {
-          async gimmeStuff(sender) {},
-          async addServer(sender, data) {
-            console.log("addServer", sender, data);
-            state.servers[sender.from] = {
-              ...data,
-              from: sender.from,
-              fromOrigin: sender.fromOrigin || "",
-            };
+        registerMCPClient({
+          insertFrame: (frame) => {
+            document.getElementById("caddrFrameContainer").appendChild(frame);
+          },
+          showAuthorizationFrame: () => {
+            document.getElementById("caddrFrameContainer").style.display =
+              "block";
+          },
+          hideAuthorizationFrame: () => {
+            document.getElementById("caddrFrameContainer").style.display =
+              "none";
+          },
+          updateServerList: (servers) => {
+            state.servers = servers;
             updateServerList();
           },
-          async newServerAdded(sender) {
-            state.servers = {};
-            await NOTIFY("*", "gimmeStuff", null);
-          },
-          async onConnect(sender, params) {
-            if (sender.from === "") {
-              hasBroadcastChannel = params.hasBroadcastChannel;
-              // hideAuthorizationFrame();
-              // dataBox.innerText = "Listing methods...";
-              console.log("sending a notify");
-              state.servers = {};
-              await NOTIFY("*", "gimmeStuff", null);
-              //   servers = {};
-              //   for (let info of allServers) {
-              //     servers[info.from] = info;
-              //   }
-              //   await NOTIFY("*", "markAlive", Object.keys(servers));
-              // showServers();
-            }
-          },
-
-          //   async addServer(sender, data) {
-          //     const info = await RPC(sender.from, "listMethods");
-
-          //   },
-          //   async onConnect(sender, params) {
-          //     if (sender.from === "") {
-          //       hasBroadcastChannel = params.hasBroadcastChannel;
-          //       //   hideAuthorizationFrame();
-          //       //   dataBox.innerText = "Listing methods...";
-          //       //   const allServers = await RPC(
-          //       //     "*",
-          //       //     "addServer",
-          //       //     await requestHandlers.listMethods()
-          //       //   );
-          //       //   servers = {};
-          //       //   for (let info of allServers) {
-          //       //     servers[info.from] = info;
-          //       //   }
-          //       //   await NOTIFY("*", "markAlive", Object.keys(servers));
-          //       //   showServers();
-          //       const allServers = await RPC("*", "listMethods");
-          //       console.log("allServers", allServers);
-          //       for (let info of allServers) {
-          //         state.servers[info.from] = {
-          //           ...info.result,
-          //           fromOrigin: info.fromOrigin || "",
-          //         };
-          //       }
-          //       updateServerList();
-          //     }
-          //   },
         });
       }
-      //   const requestHandlers = {
-      //     async addServer(sender, data) {
-      //       state.servers[sender.from] = {
-      //         ...data,
-      //         fromOrigin: sender.fromOrigin || "",
-      //       };
-      //       updateServerList();
-      //     },
-      //     async onConnect() {
-      //       // Get all servers when connected
-      //       try {
-      //         const allServers = await RPC("*", "listMethods");
-      //         for (let info of allServers) {
-      //           state.servers[info.from] = {
-      //             ...info.result,
-      //             fromOrigin: info.fromOrigin || "",
-      //           };
-      //         }
-      //         updateServerList();
-      //       } catch (error) {
-      //         console.error("Error connecting to servers:", error);
-      //       }
-      //     },
-      //   };
 
       // Update the server list in the UI
       function updateServerList() {
@@ -649,6 +628,7 @@
           messageContainer = document.createElement("div");
           messageContainer.className = "message-container";
 
+          // Still create the header element but it will be hidden by CSS
           const messageHeader = document.createElement("div");
           messageHeader.className = "message-header";
           messageHeader.textContent = role === "user" ? "You" : "Assistant";
@@ -679,45 +659,129 @@
 
       // Add a tool call to the UI
       function addToolCallToUI(toolName, toolInput, parent) {
-        const toolCall = document.createElement("div");
-        toolCall.className = "tool-call";
-        toolCall.innerHTML = `<strong>Tool Call:</strong> ${toolName}<pre>${JSON.stringify(
-          toolInput,
-          null,
-          2
-        )}</pre>`;
-        parent.appendChild(toolCall);
+        // Check if there's already a tool interaction container we can use
+        let toolInteraction = parent.querySelector(".tool-interaction");
+
+        if (!toolInteraction) {
+          // Create a new tool interaction container
+          toolInteraction = document.createElement("div");
+          toolInteraction.className = "tool-interaction";
+
+          // Create the header (always visible)
+          const header = document.createElement("div");
+          header.className = "tool-interaction-header";
+
+          // Create tool name span
+          const toolNameSpan = document.createElement("span");
+          toolNameSpan.className = "tool-name";
+          toolNameSpan.innerHTML = `🔧 Tool: ${toolName}`;
+
+          // Create status indicator span with loading indicator
+          const statusSpan = document.createElement("span");
+          statusSpan.className = "tool-status";
+          statusSpan.innerHTML = '<div class="tool-loading"></div>';
+
+          // Add both spans to header
+          header.appendChild(toolNameSpan);
+          header.appendChild(statusSpan);
+
+          header.addEventListener("click", () => {
+            const body = toolInteraction.querySelector(
+              ".tool-interaction-body"
+            );
+            body.classList.toggle("expanded");
+          });
+
+          // Create the body (hidden by default)
+          const body = document.createElement("div");
+          body.className = "tool-interaction-body";
+
+          // Add the tool call to the body
+          const toolCall = document.createElement("div");
+          toolCall.className = "tool-call";
+          toolCall.innerHTML = `<strong>Input:</strong><pre>${JSON.stringify(
+            toolInput,
+            null,
+            2
+          )}</pre>`;
+          body.appendChild(toolCall);
+
+          // Add header and body to the interaction container
+          toolInteraction.appendChild(header);
+          toolInteraction.appendChild(body);
+
+          // Add the interaction container to the parent
+          parent.appendChild(toolInteraction);
+        } else {
+          // Add another tool call to existing container
+          const body = toolInteraction.querySelector(".tool-interaction-body");
+          const toolCall = document.createElement("div");
+          toolCall.className = "tool-call";
+          toolCall.innerHTML = `<strong>Input:</strong><pre>${JSON.stringify(
+            toolInput,
+            null,
+            2
+          )}</pre>`;
+          body.appendChild(toolCall);
+
+          // Update status to show loading
+          const statusSpan = toolInteraction.querySelector(".tool-status");
+          statusSpan.innerHTML = '<div class="tool-loading"></div>';
+        }
+
         elements.messagesContainer.scrollTop =
           elements.messagesContainer.scrollHeight;
-        return toolCall;
+        return toolInteraction;
       }
 
       // Add a tool result to the UI
       function addToolResultToUI(toolResult, parent) {
-        const toolResultElem = document.createElement("div");
-        toolResultElem.className = "tool-result";
-        toolResultElem.innerHTML = `<strong>Tool Result:</strong><pre>${JSON.stringify(
-          toolResult,
-          null,
-          2
-        )}</pre>`;
-        parent.appendChild(toolResultElem);
+        // Find the tool interaction container
+        const toolInteraction = parent.querySelector(".tool-interaction");
+
+        if (toolInteraction) {
+          const body = toolInteraction.querySelector(".tool-interaction-body");
+          const statusSpan = toolInteraction.querySelector(".tool-status");
+
+          // Add result status icon to status span
+          if (toolResult.is_error) {
+            statusSpan.innerHTML = '<span style="color:red;">❌</span>';
+          } else {
+            statusSpan.innerHTML = '<span style="color:green;">✓</span>';
+          }
+
+          // Add the result to the body
+          const toolResultElem = document.createElement("div");
+          toolResultElem.className = "tool-result";
+          toolResultElem.innerHTML = `<strong>Result:</strong><pre>${JSON.stringify(
+            toolResult,
+            null,
+            2
+          )}</pre>`;
+          body.appendChild(toolResultElem);
+        }
+
         elements.messagesContainer.scrollTop =
           elements.messagesContainer.scrollHeight;
-        return toolResultElem;
+        return toolInteraction;
       }
 
       // Add a thinking indicator
       function addThinkingIndicator() {
+        // First remove any existing thinking indicators to prevent duplicates
+        removeThinkingIndicator();
+
         const indicator = document.createElement("div");
         indicator.className = "thinking-indicator";
+        indicator.id = "thinking-indicator"; // Add an ID for easier removal
         indicator.innerHTML = `
-        Claude is thinking<div class="thinking-dots">
+        <div class="thinking-dots">
           <div class="dot"></div>
           <div class="dot"></div>
           <div class="dot"></div>
         </div>
       `;
+        // Ensure it's the last element
         elements.messagesContainer.appendChild(indicator);
         elements.messagesContainer.scrollTop =
           elements.messagesContainer.scrollHeight;
@@ -726,9 +790,29 @@
 
       // Remove thinking indicator
       function removeThinkingIndicator(indicator) {
+        // If a specific indicator is passed, remove that one
         if (indicator && indicator.parentNode) {
           indicator.parentNode.removeChild(indicator);
+          return;
         }
+
+        // Otherwise, remove any thinking indicators by ID
+        const existingIndicator = document.getElementById("thinking-indicator");
+        if (existingIndicator) {
+          existingIndicator.parentNode.removeChild(existingIndicator);
+        }
+      }
+
+      // Update the UI for streaming content
+      function updateStreamingContent(role, content) {
+        // First remove any thinking indicators
+        removeThinkingIndicator();
+
+        // Update the content
+        addMessageToUI(role, content, true);
+
+        // Re-add the thinking indicator at the end
+        return addThinkingIndicator();
       }
 
       // Send a message to the API
@@ -746,7 +830,7 @@
         addMessageToUI("user", prompt);
 
         // Add thinking indicator
-        const thinkingIndicator = addThinkingIndicator();
+        let thinkingIndicator = addThinkingIndicator();
 
         try {
           await sendToAnthropicAPI(prompt);
@@ -924,7 +1008,11 @@
           } else if (data.type === "content_block_delta") {
             if (data.delta.type === "text_delta") {
               currentTextContent += data.delta.text;
-              addMessageToUI("assistant", currentTextContent, true);
+              // Replace with updateStreamingContent to ensure thinking indicator is at bottom
+              thinkingIndicator = updateStreamingContent(
+                "assistant",
+                currentTextContent
+              );
 
               // Update the text in the content array
               const textItem = assistantMessageContent.find(
@@ -1171,7 +1259,7 @@
         );
 
         // Add thinking indicator
-        const thinkingIndicator = addThinkingIndicator();
+        let thinkingIndicator = addThinkingIndicator();
 
         try {
           // Abort any existing streams
@@ -1257,7 +1345,11 @@
             } else if (data.type === "content_block_delta") {
               if (data.delta.type === "text_delta") {
                 currentTextContent += data.delta.text;
-                addMessageToUI("assistant", currentTextContent, true);
+                // Replace with updateStreamingContent to ensure thinking indicator is at bottom
+                thinkingIndicator = updateStreamingContent(
+                  "assistant",
+                  currentTextContent
+                );
 
                 // Update text in the assistant message content
                 const textItem = assistantMessageContent.find(

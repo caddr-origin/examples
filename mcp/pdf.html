@@ -41,12 +41,15 @@
         CADDR-MCP PDF Viewer
       </h1>
 
-      <!-- CADDR Frame -->
-      <iframe
-        id="caddrFrame"
-        frameborder="0"
-        class="w-full max-w-md h-20 mb-4"
-      ></iframe>
+      <!-- Authorization Frame -->
+      <div
+        id="authorizationFrame"
+        style="display: none"
+        class="w-full max-w-md h-20 mb-4 p-4 border rounded bg-gray-50"
+      >
+        <h1>Authorization</h1>
+        <p>Please authorize this server to access your PDF data.</p>
+      </div>
 
       <!-- PDF Viewer Area -->
       <div
@@ -364,107 +367,86 @@
       });
 
       // CADDR-MCP Server configuration
-      async function describeServer() {
-        return {
-          name: "pdf-viewer",
-          version: "1.0.0",
-          tools: [
-            {
-              name: "get_pdf_page_count",
-              description:
-                "Gets the total number of pages in the currently loaded PDF.",
-              input_schema: {
-                type: "object",
-                properties: {},
-                required: [],
-              },
+      registerMCPServer({
+        insertFrame: (frame) => {
+          document.getElementById("authorizationFrame").appendChild(frame);
+        },
+        showAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "block";
+        },
+        hideAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "none";
+        },
+        name: "pdf-viewer",
+        version: "1.0.0",
+        tools: [
+          {
+            name: "get_pdf_page_count",
+            description:
+              "Gets the total number of pages in the currently loaded PDF.",
+            input_schema: {
+              type: "object",
+              properties: {},
+              required: [],
             },
-            {
-              name: "get_pdf_page_text",
-              description:
-                "Gets the text content from a specific page in the PDF.",
-              input_schema: {
-                type: "object",
-                properties: {
-                  page_number: {
-                    type: "integer",
-                    description:
-                      "The page number to extract text from (starting from 1).",
-                  },
+            async execute(sender) {
+              if (!pdfDoc) return 0;
+              return pdfDoc.numPages;
+            },
+          },
+          {
+            name: "get_pdf_page_text",
+            description:
+              "Gets the text content from a specific page in the PDF.",
+            input_schema: {
+              type: "object",
+              properties: {
+                page_number: {
+                  type: "integer",
+                  description:
+                    "The page number to extract text from (starting from 1).",
                 },
-                required: ["page_number"],
               },
+              required: ["page_number"],
             },
-            {
-              name: "scroll_to_page",
-              description: "Scrolls the PDF viewer to a specific page.",
-              input_schema: {
-                type: "object",
-                properties: {
-                  page_number: {
-                    type: "integer",
-                    description:
-                      "The page number to scroll to (starting from 1).",
-                  },
+            async execute(sender, params) {
+              if (!pdfDoc) return "No PDF loaded";
+              const pageNum = params.page_number;
+              if (pageNum < 1 || pageNum > pdfDoc.numPages) {
+                return `Invalid page number. PDF has ${pdfDoc.numPages} pages.`;
+              }
+              const text = await getPageText(pageNum);
+              return text || "(No text content in this page)";
+            },
+          },
+          {
+            name: "scroll_to_page",
+            description: "Scrolls the PDF viewer to a specific page.",
+            input_schema: {
+              type: "object",
+              properties: {
+                page_number: {
+                  type: "integer",
+                  description:
+                    "The page number to scroll to (starting from 1).",
                 },
-                required: ["page_number"],
               },
+              required: ["page_number"],
             },
-          ],
-        };
-      }
-
-      function hideAuthorizationFrame() {
-        caddrFrame.style.position = "absolute";
-        caddrFrame.style.top = "-10000px";
-        caddrFrame.style.left = "-10000px";
-      }
-
-      // Request handlers for the CADDR-MCP server
-      Object.assign(requestHandlers, {
-        async get_pdf_page_count(sender) {
-          if (!pdfDoc) return 0;
-          return pdfDoc.numPages;
-        },
-
-        async get_pdf_page_text(sender, params) {
-          if (!pdfDoc) return "No PDF loaded";
-          const pageNum = params.page_number;
-          if (pageNum < 1 || pageNum > pdfDoc.numPages) {
-            return `Invalid page number. PDF has ${pdfDoc.numPages} pages.`;
-          }
-          const text = await getPageText(pageNum);
-          return text || "(No text content in this page)";
-        },
-
-        async scroll_to_page(sender, params) {
-          if (!pdfDoc) return { success: false, message: "No PDF loaded" };
-          const pageNum = params.page_number;
-          if (pageNum < 1 || pageNum > pdfDoc.numPages) {
-            return {
-              success: false,
-              message: `Invalid page number. PDF has ${pdfDoc.numPages} pages.`,
-            };
-          }
-          scrollToPage(pageNum);
-          return { success: true, message: `Scrolled to page ${pageNum}` };
-        },
-
-        async listMethods() {
-          return await describeServer();
-        },
-
-        async gimmeStuff(sender) {
-          await NOTIFY(sender.from, "addServer", await describeServer());
-        },
-
-        async onConnect(sender, params) {
-          if (sender.from === "") {
-            hasBroadcastChannel = params.hasBroadcastChannel;
-            hideAuthorizationFrame();
-            await NOTIFY("*", "newServerAdded", null);
-          }
-        },
+            async execute(sender, params) {
+              if (!pdfDoc) return { success: false, message: "No PDF loaded" };
+              const pageNum = params.page_number;
+              if (pageNum < 1 || pageNum > pdfDoc.numPages) {
+                return {
+                  success: false,
+                  message: `Invalid page number. PDF has ${pdfDoc.numPages} pages.`,
+                };
+              }
+              scrollToPage(pageNum);
+              return { success: true, message: `Scrolled to page ${pageNum}` };
+            },
+          },
+        ],
       });
     </script>
   </body>

@@ -210,6 +210,7 @@ if (url.searchParams.get("authPopup") || url.searchParams.get("authRedirect")) {
       makeStorageRequest(mountHandle, launchPopup);
     };
     document.body.appendChild(button);
+    window.parent.postMessage({ action: "prompt" }, "*");
   };
   navigator.permissions
     .query({ name: "storage-access" })

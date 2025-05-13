@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ImageMagick CADDR-MCP Server</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        margin: 0;
+        background-color: #e9ebee;
+        color: #1c1e21;
+      }
+      #appContainer {
+        max-width: 900px;
+        margin: 1.5rem auto;
+        padding: 1.5rem;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+      #dropZone {
+        border: 3px dashed #d1d5db;
+        border-radius: 8px;
+        padding: 50px 20px;
+        text-align: center;
+        cursor: pointer;
+        background: #f9fafb;
+        transition: 0.3s;
+      }
+      #dropZone.dragover {
+        background: #e5e7eb;
+        border-color: #9ca3af;
+      }
+      #imagePreviewContainer {
+        margin-top: 1.5rem;
+        text-align: center;
+        min-height: 250px;
+        background: #f3f4f6;
+        border-radius: 8px;
+        padding: 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid #e5e7eb;
+      }
+      #imagePreview {
+        max-width: 100%;
+        max-height: 500px;
+        border-radius: 4px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+        object-fit: contain;
+      }
+      #imageInfo {
+        margin-top: 0.75rem;
+        font-size: 0.875rem;
+        color: #4b5563;
+        padding: 0.5rem;
+        background: #f9fafb;
+        border-radius: 4px;
+        border: 1px solid #e5e7eb;
+      }
+      .toast {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #374151;
+        color: #fff;
+        padding: 12px 24px;
+        border-radius: 6px;
+        z-index: 1000;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.5s, transform 0.3s;
+      }
+      .toast.show {
+        opacity: 1;
+        visibility: visible;
+        transform: translateX(-50%) translateY(0);
+      }
+      .toast.error {
+        background: #ef4444;
+      }
+      .toast.success {
+        background: #22c55e;
+      }
+      .btn {
+        @apply px-4 py-2 rounded-md font-semibold transition-colors duration-150;
+      }
+      .btn-primary {
+        @apply bg-blue-600 text-white hover:bg-blue-700;
+      }
+      .btn-danger {
+        @apply bg-red-600 text-white hover:bg-red-700;
+      }
+      #loadingOverlay svg {
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin {
+        from {
+          transform: rotate(0);
+        }
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body class="bg-gray-100">
+    <div id="appContainer">
+      <header class="text-center mb-8">
+        <h1 class="text-4xl font-bold text-gray-800">AI Image Studio</h1>
+
+        <div
+          id="authorizationFrame"
+          style="display: none"
+          class="my-4 p-4 border rounded-md"
+        >
+          <h1>Authorization</h1>
+          <p>Please authorize this server to access your image data.</p>
+        </div>
+
+        <p class="text-lg text-gray-500 mt-2">
+          Drop an image to begin. An AI assistant can then help you transform
+          it.
+        </p>
+      </header>
+      <div id="statusMessages" class="mb-6">
+        <p
+          id="imageMagickStatus"
+          class="text-sm text-gray-700 p-3 bg-blue-100 border border-blue-300 rounded-md shadow-sm"
+        >
+          Initializing ImageMagick... Please wait.
+        </p>
+      </div>
+      <div id="dropZone">
+        <svg
+          class="w-16 h-16 mx-auto text-gray-400 mb-3"
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="1.5"
+            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+          />
+        </svg>
+        <p class="text-xl text-gray-600 font-semibold">
+          Drag & drop your image here
+        </p>
+        <p class="text-sm text-gray-500">Supports PNG, JPG, WEBP, GIF, etc.</p>
+      </div>
+      <div id="imageDisplaySection" class="hidden mt-8">
+        <h2 class="text-2xl font-semibold text-gray-700 mb-3">Current Image</h2>
+        <div id="imagePreviewContainer">
+          <img id="imagePreview" src="#" alt="Image preview" />
+        </div>
+        <div id="imageInfo"></div>
+        <button id="resetImageButton" class="mt-4 btn btn-danger">
+          Reset to Original
+        </button>
+      </div>
+    </div>
+    <div
+      id="loadingOverlay"
+      class="fixed inset-0 bg-gray-900 bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50 hidden"
+    >
+      <div
+        class="text-white text-lg p-8 bg-gray-800 rounded-xl shadow-2xl flex items-center"
+      >
+        <svg
+          class="h-8 w-8 text-blue-400 mr-4"
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+        >
+          <circle
+            class="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            stroke-width="4"
+          ></circle>
+          <path
+            class="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+          />
+        </svg>
+        <span id="loadingMessage">Processing...</span>
+      </div>
+    </div>
+    <div id="toastNotification" class="toast">
+      <span id="toastMessage"></span>
+    </div>
+    <script src="api.js"></script>
+    <script type="module">
+      import * as Magick from "https://cdn.jsdelivr.net/npm/wasm-imagemagick@1.2.8/dist/magickApi.js";
+
+      registerMCPServer({
+        insertFrame: (frame) => {
+          document.getElementById("authorizationFrame").appendChild(frame);
+        },
+        showAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "block";
+        },
+        hideAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "none";
+        },
+        name: "AI Image Studio Server (ImageMagick WASM)",
+        version: "1.1.0",
+        tools: [
+          {
+            name: "apply_image_transformation",
+            description: `imagemagick convert arguments`,
+            input_schema: {
+              type: "object",
+              properties: {
+                transformation_args: {
+                  type: "array",
+                  items: { type: "string" },
+                },
+                output_filename: { type: "string" },
+              },
+              required: ["transformation_args", "output_filename"],
+            },
+            async execute(sender, args) {
+              console.log("my arguments", args);
+              if (!ready) return { success: false, error: "Not ready" };
+              if (!currentBlob)
+                return { success: false, error: "Upload image" };
+              if (!Array.isArray(args.transformation_args))
+                return { success: false, error: "Bad args" };
+              if (typeof args.output_filename !== "string")
+                return { success: false, error: "Bad filename" };
+              showLoad("Applying transformation...");
+              try {
+                const out = args.output_filename,
+                  cmd = [
+                    "convert",
+                    currentName,
+                    ...args.transformation_args,
+                    out,
+                  ];
+
+                // Convert the Blob to ArrayBuffer first
+                const arrayBuffer = await currentBlob.arrayBuffer();
+                const uint8Array = new Uint8Array(arrayBuffer);
+
+                const proc = await Magick.Call(
+                  [{ name: currentName, content: uint8Array }],
+                  cmd
+                );
+
+                console.log("output proc", proc);
+
+                if (proc && proc[0] && proc[0].blob) {
+                  currentBlob = proc[0].blob;
+                  currentName = out;
+                  display(currentBlob, out);
+                  hideLoad();
+                  showToast("Done", "success");
+                  return {
+                    success: true,
+                    output_filename: out,
+                    output_size_bytes: currentBlob.size,
+                    output_type: currentBlob.type,
+                  };
+                }
+                throw new Error("No output");
+              } catch (e) {
+                hideLoad();
+                showToast(e.message, "error", 5000);
+                return { success: false, error: e.message };
+              }
+            },
+          },
+          {
+            name: "get_image_info",
+            description: "Get information about the current image",
+            input_schema: { type: "object", properties: {} },
+            async execute(sender) {
+              if (!ready) return { success: false, error: "Not ready" };
+              if (!currentBlob)
+                return { success: false, error: "Upload image" };
+              showLoad("Fetching info...");
+              try {
+                let infoObj;
+                if (Magick.Identify) {
+                  // Convert the Blob to ArrayBuffer first
+                  const arrayBuffer = await currentBlob.arrayBuffer();
+                  const uint8Array = new Uint8Array(arrayBuffer);
+
+                  const ident = await Magick.Identify(uint8Array);
+                  const d = ident[0];
+                  infoObj = {
+                    filename: currentName,
+                    format: d.format,
+                    mime_type: d.mimeType,
+                    width: d.geometry.width,
+                    height: d.geometry.height,
+                    size_bytes: currentBlob.size,
+                  };
+                } else {
+                  const tmp = new Image();
+                  await new Promise((res) => {
+                    tmp.onload = res;
+                    tmp.onerror = res;
+                    tmp.src = previewURL;
+                  });
+                  infoObj = {
+                    filename: currentName,
+                    format: currentBlob.type.split("/")[1],
+                    mime_type: currentBlob.type,
+                    width: tmp.naturalWidth,
+                    height: tmp.naturalHeight,
+                    size_bytes: currentBlob.size,
+                  };
+                }
+                hideLoad();
+                showToast("Info ready", "success");
+                display(currentBlob, currentName);
+                return { success: true, image_info: infoObj };
+              } catch (e) {
+                console.error(e);
+                hideLoad();
+                showToast("Info failed", "error");
+                return {
+                  success: true,
+                  image_info: {
+                    filename: currentName,
+                    format: currentBlob.type.split("/")[1],
+                    mime_type: currentBlob.type,
+                    size_bytes: currentBlob.size,
+                    width: 0,
+                    height: 0,
+                    note: "fallback",
+                  },
+                };
+              }
+            },
+          },
+        ],
+      });
+
+      (async () => {
+        let originalFile,
+          currentBlob,
+          currentName,
+          previewURL,
+          ready = false;
+        const dropZone = document.getElementById("dropZone"),
+          preview = document.getElementById("imagePreview"),
+          info = document.getElementById("imageInfo"),
+          section = document.getElementById("imageDisplaySection"),
+          status = document.getElementById("imageMagickStatus"),
+          overlay = document.getElementById("loadingOverlay"),
+          loadMsg = document.getElementById("loadingMessage"),
+          resetBtn = document.getElementById("resetImageButton"),
+          toastBox = document.getElementById("toastNotification"),
+          toastMsg = document.getElementById("toastMessage");
+        window.showToast = (msg, type = "info", dur = 3500) => {
+          toastMsg.textContent = msg;
+          toastBox.className = "toast show";
+          if (type === "error") toastBox.classList.add("error");
+          if (type === "success") toastBox.classList.add("success");
+          setTimeout(() => (toastBox.className = "toast"), dur);
+        };
+        const showLoad = (msg) => {
+            loadMsg.textContent = msg;
+            overlay.classList.remove("hidden");
+          },
+          hideLoad = () => overlay.classList.add("hidden");
+        // initialize if available
+        try {
+          if (Magick.initialize) {
+            status.textContent = "Loading...";
+            showLoad("Initializing ImageMagick...");
+            await Magick.initialize();
+          }
+          ready = true;
+          status.textContent = "ImageMagick Ready!";
+          status.classList.replace("bg-blue-100", "bg-green-100");
+          status.classList.replace("border-blue-300", "border-green-300");
+          showToast("ImageMagick ready!", "success");
+        } catch (e) {
+          status.textContent = "Init failed";
+          status.classList.replace("bg-blue-100", "bg-red-100");
+          status.classList.replace("border-blue-300", "border-red-300");
+          showToast("Init error", "error", 5000);
+        } finally {
+          hideLoad();
+        }
+
+        const display = (blob, name) => {
+          if (previewURL) URL.revokeObjectURL(previewURL);
+          previewURL = URL.createObjectURL(blob);
+          preview.src = previewURL;
+          section.classList.remove("hidden");
+          const kb = (blob.size / 1024).toFixed(2),
+            temp = new Image();
+          temp.onload = () => {
+            info.innerHTML = `<strong>Name:</strong> ${name}<br><strong>Type:</strong> ${blob.type}<br><strong>Size:</strong> ${kb} KB<br><strong>Dimensions:</strong> ${temp.width}x${temp.height}px`;
+            URL.revokeObjectURL(temp.src);
+          };
+          temp.onerror = () => {
+            info.innerHTML = `<strong>Name:</strong> ${name}<br><strong>Type:</strong> ${blob.type}<br><strong>Size:</strong> ${kb} KB<br><strong>Dimensions:</strong> (n/a)`;
+          };
+          temp.src = previewURL;
+        };
+
+        const handleDrop = (e) => {
+          e.preventDefault();
+          dropZone.classList.remove("dragover");
+          if (!ready) {
+            showToast("Please wait for init.", "error");
+            return;
+          }
+          const f = e.dataTransfer.files[0];
+          if (f && f.type.startsWith("image/")) {
+            originalFile = f;
+            currentName = "input." + f.name.split(".").pop().toLowerCase();
+            const r = new FileReader();
+            r.onload = (ev) => {
+              currentBlob = new Blob([ev.target.result], { type: f.type });
+              display(currentBlob, currentName);
+              showToast(`Loaded ${f.name}`, "success");
+            };
+            r.onerror = () => showToast("Read error", "error");
+            r.readAsArrayBuffer(f);
+          } else showToast("Invalid file", "error");
+        };
+
+        ["dragenter", "dragover", "dragleave", "drop"].forEach((ev) => {
+          dropZone.addEventListener(ev, (e) => e.preventDefault());
+        });
+        dropZone.addEventListener("dragenter", () =>
+          dropZone.classList.add("dragover")
+        );
+        dropZone.addEventListener("dragleave", () =>
+          dropZone.classList.remove("dragover")
+        );
+        dropZone.addEventListener("drop", handleDrop);
+
+        resetBtn.addEventListener("click", () => {
+          if (!originalFile) {
+            showToast("No original", "info");
+            return;
+          }
+          showLoad("Resetting...");
+          const r = new FileReader();
+          r.onload = (ev) => {
+            currentBlob = new Blob([ev.target.result], {
+              type: originalFile.type,
+            });
+            display(currentBlob, currentName);
+            hideLoad();
+            showToast("Reset", "success");
+          };
+          r.onerror = () => {
+            hideLoad();
+            showToast("Reset error", "error");
+          };
+          r.readAsArrayBuffer(originalFile);
+        });
+      })();
+    </script>
+  </body>
+</html>

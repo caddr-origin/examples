@@ -29,11 +29,14 @@
         <h1 class="text-3xl font-bold text-gray-800">
           CADDR-MCP Graphviz Server
         </h1>
-        <iframe
-          id="caddrFrame"
-          frameborder="0"
+        <div
+          id="authorizationFrame"
+          style="display: none"
           class="w-[300px] h-[80px]"
-        ></iframe>
+        >
+          <h1>Authorization</h1>
+          <p>Please authorize this server to access your graphviz data.</p>
+        </div>
       </header>
 
       <div class="bg-white shadow-md rounded-lg p-6 mb-6">
@@ -171,78 +174,66 @@
       // Initialize on page load
       document.addEventListener("DOMContentLoaded", initGraphviz);
 
-      async function describeServer() {
-        return {
-          name: "graphviz-renderer",
-          version: "1.0.0",
-          tools: [
-            {
-              name: "render_graph",
-              description:
-                "Renders a graph visualization from Graphviz DOT language",
-              input_schema: {
-                type: "object",
-                properties: {
-                  dot_source: {
-                    type: "string",
-                    description:
-                      "The Graphviz DOT language source code for the graph",
-                  },
-                  engine: {
-                    type: "string",
-                    description:
-                      "The layout engine to use (dot, neato, fdp, sfdp, twopi, circo)",
-                    enum: ["dot", "neato", "fdp", "sfdp", "twopi", "circo"],
-                    default: "dot",
-                  },
+      registerMCPServer({
+        insertFrame: (frame) => {
+          document.getElementById("authorizationFrame").appendChild(frame);
+        },
+        showAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "block";
+        },
+        hideAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "none";
+        },
+        name: "graphviz-renderer",
+        version: "1.0.0",
+        tools: [
+          {
+            name: "render_graph",
+            description:
+              "Renders a graph visualization from Graphviz DOT language",
+            input_schema: {
+              type: "object",
+              properties: {
+                dot_source: {
+                  type: "string",
+                  description:
+                    "The Graphviz DOT language source code for the graph",
                 },
-                required: ["dot_source"],
+                engine: {
+                  type: "string",
+                  description:
+                    "The layout engine to use (dot, neato, fdp, sfdp, twopi, circo)",
+                  enum: ["dot", "neato", "fdp", "sfdp", "twopi", "circo"],
+                  default: "dot",
+                },
               },
+              required: ["dot_source"],
             },
-          ],
-        };
-      }
+            async execute(sender, params) {
+              if (!params.dot_source) {
+                return { error: "Missing dot_source parameter" };
+              }
 
-      function hideAuthorizationFrame() {
-        caddrFrame.style.position = "absolute";
-        caddrFrame.style.top = "-10000px";
-        caddrFrame.style.left = "-10000px";
-      }
+              try {
+                const engine = params.engine || "dot";
+                if (!graphviz) {
+                  await initGraphviz();
+                }
+                document.getElementById("dotInput").value = params.dot_source;
+                const svg = await graphviz.layout(
+                  params.dot_source,
+                  "svg",
+                  engine
+                );
+                graphOutput.innerHTML = svg;
 
-      Object.assign(requestHandlers, {
-        async render_graph(sender, params) {
-          if (!params.dot_source) {
-            return { error: "Missing dot_source parameter" };
-          }
-
-          try {
-            const engine = params.engine || "dot";
-            if (!graphviz) {
-              await initGraphviz();
-            }
-            document.getElementById("dotInput").value = params.dot_source;
-            const svg = await graphviz.layout(params.dot_source, "svg", engine);
-            // return { svg };
-
-            graphOutput.innerHTML = svg;
-
-            return "Rendered graph";
-          } catch (error) {
-            return { error: error.message };
-          }
-        },
-
-        async gimmeStuff(sender) {
-          await NOTIFY(sender.from, "addServer", await describeServer());
-        },
-
-        async onConnect(sender, params) {
-          if (sender.from === "") {
-            hasBroadcastChannel = params.hasBroadcastChannel;
-            hideAuthorizationFrame();
-            await NOTIFY("*", "newServerAdded", null);
-          }
-        },
+                return "Rendered graph";
+              } catch (error) {
+                return { error: error.message };
+              }
+            },
+          },
+        ],
       });
     </script>
   </body>

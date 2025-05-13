@@ -7,11 +7,11 @@
   </head>
   <body>
     <h1>CADDR-MCP Stock Price Server</h1>
-    <iframe
-      id="caddrFrame"
-      frameborder="0"
-      style="width: 300px; height: 80px"
-    ></iframe>
+
+    <div id="authorizationFrame" style="display: none">
+      <h1>Authorization</h1>
+      <p>Please authorize this server to access your stock data.</p>
+    </div>
 
     <br />
 
@@ -19,27 +19,30 @@
     <script src="api.js"></script>
 
     <script>
-      async function describeServer() {
-        return {
-          name: "stock price",
-          version: "1.0.0",
-          // capabilities: {
-          //   resources: {},
-          //   tools: {},
-          // },
-          tools: [
-            {
-              name: "get_stock_price",
-              description:
-                "Get the current stock price for a given ticker symbol.",
-              input_schema: {
-                type: "object",
-                properties: {
-                  ticker: {
-                    type: "string",
-                    description: `The stock ticker symbol, e.g. AAPL for Apple Inc. 
-                      
-
+      registerMCPServer({
+        insertFrame: (frame) => {
+          document.getElementById("authorizationFrame").appendChild(frame);
+        },
+        showAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "block";
+        },
+        hideAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "none";
+        },
+        name: "stock price",
+        version: "1.0.0",
+        tools: [
+          {
+            name: "get_stock_price",
+            description:
+              "Get the current stock price for a given ticker symbol.",
+            input_schema: {
+              type: "object",
+              properties: {
+                ticker: {
+                  type: "string",
+                  description: `The stock ticker symbol, e.g. AAPL for Apple Inc. 
+                    
 Symbol 	Security 	GICS Sector 	GICS Sub-Industry 	Headquarters Location 	Date added 	CIK 	Founded 
 MMM 	3M 	Industrials 	Industrial Conglomerates 	Saint Paul, Minnesota 	1957-03-04 	0000066740 	1902
 AOS 	A. O. Smith 	Industrials 	Building Products 	Milwaukee, Wisconsin 	2017-07-26 	0000091142 	1916
@@ -545,33 +548,16 @@ ZBRA 	Zebra Technologies 	Information Technology 	Electronic Equipment & Instrum
 ZBH 	Zimmer Biomet 	Health Care 	Health Care Equipment 	Warsaw, Indiana 	2001-08-07 	0001136869 	1927
 ZTS 	Zoetis 	Health Care 	Pharmaceuticals 	Parsippany, New Jersey 	2013-06-21 	0001555280 	1952 
                       `,
-                  },
                 },
-                required: ["ticker"],
               },
+              required: ["ticker"],
             },
-          ],
-        };
-      }
-
-      Object.assign(requestHandlers, {
-        async get_stock_price(sender, params) {
-          return 420.69;
-        },
-        async listMethods() {
-          return await describeServer();
-        },
-        async gimmeStuff(sender) {
-          await NOTIFY(sender.from, "addServer", await describeServer());
-        },
-        async onConnect(sender, params) {
-          if (sender.from === "") {
-            hasBroadcastChannel = params.hasBroadcastChannel;
-            // hideAuthorizationFrame();
-            // dataBox.innerText = "Listing methods...";
-            await NOTIFY("*", "newServerAdded", null);
-          }
-        },
+            async execute(sender, params) {
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+              return 420.69;
+            },
+          },
+        ],
       });
     </script>
   </body>

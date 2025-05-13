@@ -83,6 +83,7 @@ async function connectDataChannel(clientId) {
 
 let peers = {};
 const requestHandlers = {
+  showAuthorizationPrompt() {},
   async echo(sender, data) {
     return "Echo: " + data;
   },
@@ -298,9 +299,13 @@ window.addEventListener(
         url.searchParams.set("authRedirect", location.href);
         location.href = url;
         return;
+      } else if (event.data.action === "data") {
+        const data = JSON.parse(event.data.value);
+        handleMessage(data);
+      } else if (event.data.action === "prompt") {
+        // this is where we should show the prompt UI
+        requestHandlers.showAuthorizationPrompt();
       }
-      const data = JSON.parse(event.data.value);
-      handleMessage(data);
     }
   },
   false
@@ -326,11 +331,101 @@ async function getHash32(url) {
   return res;
 }
 
-getHash32(contractURL).then((hash32) => {
+let caddrFrame = document.createElement("iframe");
+caddrFrame.id = "caddrFrame";
+caddrFrame.frameBorder = 0;
+caddrFrame.style.width = "100%";
+caddrFrame.style.height = "80px";
+
+async function registerMCPServer(info) {
+  const hash32 = await getHash32(contractURL);
+
   hostOrigin = "https://" + hash32 + ".caddr.org";
   let url = new URL(hostOrigin);
   url.searchParams.set("src", contractURL);
   if (new URLSearchParams(location.search).get("useRedirect"))
     url.searchParams.set("useRedirect", "true");
   caddrFrame.setAttribute("src", url);
-});
+
+  for (let tool of info.tools) {
+    requestHandlers[tool.name] = tool.execute;
+  }
+  const describeServer = () => JSON.parse(JSON.stringify(info));
+  Object.assign(requestHandlers, {
+    showAuthorizationFrame: info.showAuthorizationFrame,
+    async gimmeStuff(sender) {
+      await NOTIFY(sender.from, "addServer", describeServer());
+    },
+    async onConnect(sender, params) {
+      if (sender.from === "") {
+        hasBroadcastChannel = params.hasBroadcastChannel;
+        info.hideAuthorizationFrame();
+        await NOTIFY("*", "newServerAdded", null);
+      }
+    },
+  });
+
+  info.insertFrame(caddrFrame);
+}
+
+async function registerMCPClient(info) {
+  const hash32 = await getHash32(contractURL);
+
+  hostOrigin = "https://" + hash32 + ".caddr.org";
+  let url = new URL(hostOrigin);
+  url.searchParams.set("src", contractURL);
+  if (new URLSearchParams(location.search).get("useRedirect"))
+    url.searchParams.set("useRedirect", "true");
+  caddrFrame.setAttribute("src", url);
+
+  let serverState = {};
+  Object.assign(requestHandlers, {
+    async gimmeStuff(sender) {},
+    async addServer(sender, data) {
+      console.log("addServer", sender, data);
+      serverState[sender.from] = {
+        ...data,
+        from: sender.from,
+        fromOrigin: sender.fromOrigin || "",
+      };
+      info.updateServerList(serverState);
+    },
+    async newServerAdded(sender) {
+      serverState = {};
+      await NOTIFY("*", "gimmeStuff", null);
+    },
+    showAuthorizationPrompt() {
+      info.showAuthorizationFrame();
+    },
+    async onConnect(sender, params) {
+      if (sender.from === "") {
+        hasBroadcastChannel = params.hasBroadcastChannel;
+        info.hideAuthorizationFrame();
+
+        console.log("sending a notify");
+        serverState = {};
+        await NOTIFY("*", "gimmeStuff", null);
+      }
+    },
+  });
+
+  // for (let tool of info.tools) {
+  //   requestHandlers[tool.name] = tool.execute;
+  // }
+  // const describeServer = () => JSON.parse(JSON.stringify(info));
+  // Object.assign(requestHandlers, {
+  //   showAuthorizationFrame: info.showAuthorizationFrame,
+  //   async gimmeStuff(sender) {
+  //     await NOTIFY(sender.from, "addServer", describeServer());
+  //   },
+  //   async onConnect(sender, params) {
+  //     if (sender.from === "") {
+  //       hasBroadcastChannel = params.hasBroadcastChannel;
+  //       info.hideAuthorizationFrame();
+  //       await NOTIFY("*", "newServerAdded", null);
+  //     }
+  //   },
+  // });
+
+  info.insertFrame(caddrFrame);
+}

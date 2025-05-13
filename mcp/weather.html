@@ -7,11 +7,11 @@
   </head>
   <body>
     <h1>CADDR-MCP Weather Server</h1>
-    <iframe
-      id="caddrFrame"
-      frameborder="0"
-      style="width: 300px; height: 80px"
-    ></iframe>
+
+    <div id="authorizationFrame" style="display: none">
+      <h1>Authorization</h1>
+      <p>Please authorize this server to access your weather data.</p>
+    </div>
 
     <br />
 
@@ -19,59 +19,39 @@
     <script src="api.js"></script>
 
     <script>
-      async function describeServer() {
-        return {
-          name: "weather",
-          version: "1.0.0",
-          // capabilities: {
-          //   resources: {},
-          //   tools: {},
-          // },
-          tools: [
-            {
-              name: "get_weather",
-              description:
-                "Gets the current weather in a city. Returns temperature in Fahrenheit.",
-              input_schema: {
-                type: "object",
-                properties: {
-                  city: {
-                    type: "string",
-                    description: `The name of the city to get the weather for.
+      registerMCPServer({
+        insertFrame: (frame) => {
+          document.getElementById("authorizationFrame").appendChild(frame);
+        },
+        showAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "block";
+        },
+        hideAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "none";
+        },
+        name: "weather",
+        version: "1.0.0",
+        tools: [
+          {
+            name: "get_weather",
+            description:
+              "Gets the current weather in a city. Returns temperature in Fahrenheit.",
+            input_schema: {
+              type: "object",
+              properties: {
+                city: {
+                  type: "string",
+                  description: `The name of the city to get the weather for.
                       `,
-                  },
                 },
-                required: ["city"],
               },
+              required: ["city"],
             },
-          ],
-        };
-      }
-
-      function hideAuthorizationFrame() {
-        // dataBox.style.display = "";
-        caddrFrame.style.position = "absolute";
-        caddrFrame.style.top = "-10000px";
-        caddrFrame.style.left = "-10000px";
-      }
-
-      Object.assign(requestHandlers, {
-        async get_weather(sender, params) {
-          return 72.6;
-        },
-        async listMethods() {
-          return await describeServer();
-        },
-        async gimmeStuff(sender) {
-          await NOTIFY(sender.from, "addServer", await describeServer());
-        },
-        async onConnect(sender, params) {
-          if (sender.from === "") {
-            hasBroadcastChannel = params.hasBroadcastChannel;
-            hideAuthorizationFrame();
-            await NOTIFY("*", "newServerAdded", null);
-          }
-        },
+            async execute(sender, params) {
+              return 72.6;
+            },
+          },
+        ],
       });
     </script>
   </body>
