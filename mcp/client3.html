@@ -1,0 +1,1336 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Claude-like Interface</title>
+    <style>
+      :root {
+        --primary-color: #5436da;
+        --secondary-color: #f7f7f8;
+        --text-color: #353740;
+        --border-color: #eaeaea;
+        --hover-color: #ececf1;
+        --assistant-bg: #f7f7f8;
+        --user-bg: #ffffff;
+        --error-color: #ff4d4f;
+        --success-color: #52c41a;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+      }
+
+      body {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        color: var(--text-color);
+        background-color: white;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.5rem 1rem;
+        border-bottom: 1px solid var(--border-color);
+        background-color: white;
+      }
+
+      .logo {
+        font-weight: bold;
+        font-size: 1.2rem;
+        color: var(--primary-color);
+      }
+
+      .sidebar-toggle {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 1.2rem;
+        color: var(--text-color);
+      }
+
+      .main-container {
+        display: flex;
+        flex: 1;
+        overflow: hidden;
+      }
+
+      .sidebar {
+        width: 280px;
+        border-right: 1px solid var(--border-color);
+        overflow-y: auto;
+        background-color: white;
+        transition: width 0.3s;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .sidebar.collapsed {
+        width: 0;
+      }
+
+      .api-key-section {
+        padding: 1rem;
+        border-bottom: 1px solid var(--border-color);
+      }
+
+      .api-key-section h3 {
+        margin-bottom: 0.5rem;
+        font-size: 0.9rem;
+        font-weight: 600;
+      }
+
+      .api-key-input {
+        width: 100%;
+        padding: 0.5rem;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        font-size: 0.9rem;
+      }
+
+      .save-key-button {
+        margin-top: 0.5rem;
+        padding: 0.5rem;
+        background-color: var(--primary-color);
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        width: 100%;
+        font-size: 0.9rem;
+      }
+
+      .save-key-button:hover {
+        opacity: 0.9;
+      }
+
+      .servers-section {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1rem;
+      }
+
+      .servers-section h3 {
+        margin-bottom: 0.5rem;
+        font-size: 0.9rem;
+        font-weight: 600;
+      }
+
+      .server-list {
+        list-style: none;
+      }
+
+      .server-item {
+        margin-bottom: 0.5rem;
+      }
+
+      .server-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.5rem;
+        background-color: var(--secondary-color);
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        font-weight: 500;
+      }
+
+      .server-header:hover {
+        background-color: var(--hover-color);
+      }
+
+      .server-tools {
+        margin-left: 1rem;
+        margin-top: 0.5rem;
+        display: none;
+      }
+
+      .server-tools.expanded {
+        display: block;
+      }
+
+      .tool-item {
+        padding: 0.3rem 0.5rem;
+        margin-bottom: 0.3rem;
+        border-left: 2px solid var(--border-color);
+        font-size: 0.8rem;
+      }
+
+      .tool-item:hover {
+        background-color: var(--hover-color);
+      }
+
+      .content-area {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      .messages-container {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1rem;
+      }
+
+      .message {
+        max-width: 80%;
+        margin-bottom: 1.5rem;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        line-height: 1.5;
+        font-size: 0.95rem;
+      }
+
+      .user-message {
+        align-self: flex-end;
+        background-color: var(--user-bg);
+        border: 1px solid var(--border-color);
+        margin-left: auto;
+      }
+
+      .assistant-message {
+        align-self: flex-start;
+        background-color: var(--assistant-bg);
+        border: 1px solid var(--border-color);
+      }
+
+      .message-container {
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 1.5rem;
+      }
+
+      .message-header {
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        font-size: 0.9rem;
+      }
+
+      .tool-call {
+        background-color: #e6f7ff;
+        border: 1px solid #91d5ff;
+        border-radius: 0.5rem;
+        padding: 0.7rem;
+        margin-top: 0.5rem;
+        margin-bottom: 0.5rem;
+        font-family: monospace;
+        font-size: 0.85rem;
+        overflow-x: auto;
+      }
+
+      .tool-result {
+        background-color: #f6ffed;
+        border: 1px solid #b7eb8f;
+        border-radius: 0.5rem;
+        padding: 0.7rem;
+        margin-top: 0.5rem;
+        margin-bottom: 0.5rem;
+        font-family: monospace;
+        font-size: 0.85rem;
+        overflow-x: auto;
+      }
+
+      .input-container {
+        padding: 1rem;
+        border-top: 1px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        background-color: white;
+      }
+
+      .prompt-input {
+        flex: 1;
+        padding: 0.8rem;
+        border: 1px solid var(--border-color);
+        border-radius: 0.5rem;
+        font-size: 0.95rem;
+        resize: none;
+        max-height: 150px;
+        min-height: 50px;
+      }
+
+      .prompt-input:focus {
+        outline: none;
+        border-color: var(--primary-color);
+      }
+
+      .send-button {
+        margin-left: 0.5rem;
+        padding: 0.8rem 1.2rem;
+        background-color: var(--primary-color);
+        color: white;
+        border: none;
+        border-radius: 0.5rem;
+        cursor: pointer;
+        font-size: 0.95rem;
+      }
+
+      .send-button:hover {
+        opacity: 0.9;
+      }
+
+      .send-button:disabled {
+        background-color: var(--border-color);
+        cursor: not-allowed;
+      }
+
+      pre {
+        white-space: pre-wrap;
+        word-wrap: break-word;
+      }
+
+      .status-indicator {
+        padding: 0.3rem 0.6rem;
+        border-radius: 0.25rem;
+        font-size: 0.8rem;
+        margin-left: 0.5rem;
+      }
+
+      .status-success {
+        background-color: #f6ffed;
+        color: var(--success-color);
+        border: 1px solid var(--success-color);
+      }
+
+      .status-error {
+        background-color: #fff1f0;
+        color: var(--error-color);
+        border: 1px solid var(--error-color);
+      }
+
+      .thinking-indicator {
+        display: flex;
+        align-items: center;
+        margin-top: 0.5rem;
+        font-size: 0.9rem;
+        color: #666;
+      }
+
+      .thinking-dots {
+        display: flex;
+        margin-left: 0.5rem;
+      }
+
+      .dot {
+        width: 6px;
+        height: 6px;
+        background-color: #666;
+        border-radius: 50%;
+        margin-right: 3px;
+        animation: pulse 1.5s infinite;
+      }
+
+      .dot:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+
+      .dot:nth-child(3) {
+        animation-delay: 0.4s;
+      }
+
+      @keyframes pulse {
+        0% {
+          transform: scale(0.8);
+          opacity: 0.5;
+        }
+        50% {
+          transform: scale(1.2);
+          opacity: 1;
+        }
+        100% {
+          transform: scale(0.8);
+          opacity: 0.5;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <button id="sidebarToggle" class="sidebar-toggle">☰</button>
+      <div class="logo">Claude Interface</div>
+      <div id="apiKeyStatus"></div>
+    </header>
+
+    <div class="main-container">
+      <div id="sidebar" class="sidebar">
+        <div class="api-key-section">
+          <h3>Caddr Frame</h3>
+          <iframe
+            id="caddrFrame"
+            frameborder="0"
+            style="width: 300px; height: 80px"
+          ></iframe>
+        </div>
+        <div class="api-key-section">
+          <h3>API Key Configuration</h3>
+          <input
+            type="password"
+            id="apiKeyInput"
+            class="api-key-input"
+            placeholder="Enter your Anthropic API key"
+          />
+          <button id="saveApiKey" class="save-key-button">Save API Key</button>
+        </div>
+
+        <div class="servers-section">
+          <h3>Available Servers & Tools</h3>
+          <ul id="serverList" class="server-list">
+            <!-- Servers and tools will be dynamically added here -->
+          </ul>
+        </div>
+      </div>
+
+      <div class="content-area">
+        <div id="messagesContainer" class="messages-container">
+          <!-- Messages will be displayed here -->
+          <div class="message-container">
+            <div class="message-header">Assistant</div>
+            <div class="message assistant-message">
+              Hello! I'm a Claude-like interface. Enter your API key in the
+              sidebar to get started, and I'll be ready to help you.
+            </div>
+          </div>
+        </div>
+
+        <div class="input-container">
+          <textarea
+            id="promptInput"
+            class="prompt-input"
+            placeholder="Type your message here..."
+          ></textarea>
+          <button id="sendButton" class="send-button" disabled>Send</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="api.js"></script>
+    <script>
+      // State management
+      const state = {
+        apiKey: localStorage.getItem("ANTHROPIC_API_KEY") || "",
+        messages: [],
+        currentAssistantMessage: null,
+        servers: {},
+        activeStreamController: null,
+        messageIdCounter: 0,
+        isWaitingForToolResult: false,
+      };
+
+      // DOM Elements
+      const elements = {
+        sidebarToggle: document.getElementById("sidebarToggle"),
+        sidebar: document.getElementById("sidebar"),
+        apiKeyInput: document.getElementById("apiKeyInput"),
+        saveApiKey: document.getElementById("saveApiKey"),
+        apiKeyStatus: document.getElementById("apiKeyStatus"),
+        serverList: document.getElementById("serverList"),
+        messagesContainer: document.getElementById("messagesContainer"),
+        promptInput: document.getElementById("promptInput"),
+        sendButton: document.getElementById("sendButton"),
+      };
+
+      // Initialize the interface
+      function init() {
+        // Set up event listeners
+        elements.sidebarToggle.addEventListener("click", toggleSidebar);
+        elements.saveApiKey.addEventListener("click", saveApiKey);
+        elements.promptInput.addEventListener("keydown", handlePromptKeydown);
+        elements.sendButton.addEventListener("click", sendMessage);
+
+        // Load API key from localStorage
+        if (state.apiKey) {
+          elements.apiKeyInput.value = "••••••••••••••••••••••••••";
+          elements.apiKeyStatus.innerHTML =
+            '<span class="status-indicator status-success">API Key Saved</span>';
+          elements.sendButton.disabled = false;
+        }
+
+        // Initialize message history
+        loadMessages();
+
+        // Set up server listeners
+        setupServerListeners();
+      }
+
+      // Toggle sidebar visibility
+      function toggleSidebar() {
+        elements.sidebar.classList.toggle("collapsed");
+      }
+
+      // Save API key to localStorage
+      function saveApiKey() {
+        const apiKey = elements.apiKeyInput.value.trim();
+        if (apiKey) {
+          localStorage.setItem("ANTHROPIC_API_KEY", apiKey);
+          state.apiKey = apiKey;
+          elements.apiKeyInput.value = "••••••••••••••••••••••••••";
+          elements.apiKeyStatus.innerHTML =
+            '<span class="status-indicator status-success">API Key Saved</span>';
+          elements.sendButton.disabled = false;
+        } else {
+          elements.apiKeyStatus.innerHTML =
+            '<span class="status-indicator status-error">Invalid API Key</span>';
+        }
+      }
+
+      // Handle keydown in prompt input
+      function handlePromptKeydown(e) {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      }
+
+      // Load messages from history
+      function loadMessages() {
+        // This could be expanded to load messages from localStorage or a database
+        // For now, we're just displaying the welcome message
+      }
+
+      // Set up server listeners
+      function setupServerListeners() {
+        // Set up the request handlers for the iframe communication
+        // We assume RPC is defined in the external api.js
+
+        Object.assign(requestHandlers, {
+          async gimmeStuff(sender) {},
+          async addServer(sender, data) {
+            console.log("addServer", sender, data);
+            state.servers[sender.from] = {
+              ...data,
+              from: sender.from,
+              fromOrigin: sender.fromOrigin || "",
+            };
+            updateServerList();
+          },
+          async newServerAdded(sender) {
+            state.servers = {};
+            await NOTIFY("*", "gimmeStuff", null);
+          },
+          async onConnect(sender, params) {
+            if (sender.from === "") {
+              hasBroadcastChannel = params.hasBroadcastChannel;
+              // hideAuthorizationFrame();
+              // dataBox.innerText = "Listing methods...";
+              console.log("sending a notify");
+              state.servers = {};
+              await NOTIFY("*", "gimmeStuff", null);
+              //   servers = {};
+              //   for (let info of allServers) {
+              //     servers[info.from] = info;
+              //   }
+              //   await NOTIFY("*", "markAlive", Object.keys(servers));
+              // showServers();
+            }
+          },
+
+          //   async addServer(sender, data) {
+          //     const info = await RPC(sender.from, "listMethods");
+
+          //   },
+          //   async onConnect(sender, params) {
+          //     if (sender.from === "") {
+          //       hasBroadcastChannel = params.hasBroadcastChannel;
+          //       //   hideAuthorizationFrame();
+          //       //   dataBox.innerText = "Listing methods...";
+          //       //   const allServers = await RPC(
+          //       //     "*",
+          //       //     "addServer",
+          //       //     await requestHandlers.listMethods()
+          //       //   );
+          //       //   servers = {};
+          //       //   for (let info of allServers) {
+          //       //     servers[info.from] = info;
+          //       //   }
+          //       //   await NOTIFY("*", "markAlive", Object.keys(servers));
+          //       //   showServers();
+          //       const allServers = await RPC("*", "listMethods");
+          //       console.log("allServers", allServers);
+          //       for (let info of allServers) {
+          //         state.servers[info.from] = {
+          //           ...info.result,
+          //           fromOrigin: info.fromOrigin || "",
+          //         };
+          //       }
+          //       updateServerList();
+          //     }
+          //   },
+        });
+      }
+      //   const requestHandlers = {
+      //     async addServer(sender, data) {
+      //       state.servers[sender.from] = {
+      //         ...data,
+      //         fromOrigin: sender.fromOrigin || "",
+      //       };
+      //       updateServerList();
+      //     },
+      //     async onConnect() {
+      //       // Get all servers when connected
+      //       try {
+      //         const allServers = await RPC("*", "listMethods");
+      //         for (let info of allServers) {
+      //           state.servers[info.from] = {
+      //             ...info.result,
+      //             fromOrigin: info.fromOrigin || "",
+      //           };
+      //         }
+      //         updateServerList();
+      //       } catch (error) {
+      //         console.error("Error connecting to servers:", error);
+      //       }
+      //     },
+      //   };
+
+      // Update the server list in the UI
+      function updateServerList() {
+        elements.serverList.innerHTML = "";
+
+        Object.entries(state.servers).forEach(([serverId, serverInfo]) => {
+          const serverItem = document.createElement("li");
+          serverItem.className = "server-item";
+
+          const serverHeader = document.createElement("div");
+          serverHeader.className = "server-header";
+
+          // Include server ID, name and origin in the header
+          const serverName = serverInfo.name || "Unknown";
+          const serverOrigin = serverInfo.fromOrigin || "";
+          serverHeader.textContent = `${serverId} (${serverName}) ${
+            serverOrigin ? `- ${serverOrigin}` : ""
+          }`;
+
+          serverHeader.addEventListener("click", () => {
+            const toolsList = serverItem.querySelector(".server-tools");
+            toolsList.classList.toggle("expanded");
+          });
+
+          serverItem.appendChild(serverHeader);
+
+          const toolsList = document.createElement("div");
+          toolsList.className = "server-tools expanded"; // Add expanded class by default
+
+          if (serverInfo.tools && serverInfo.tools.length > 0) {
+            serverInfo.tools.forEach((tool) => {
+              const toolItem = document.createElement("div");
+              toolItem.className = "tool-item";
+              toolItem.textContent = `${tool.name}: ${
+                tool.description || "No description"
+              }`;
+              toolsList.appendChild(toolItem);
+            });
+          } else {
+            const noTools = document.createElement("div");
+            noTools.className = "tool-item";
+            noTools.textContent = "No tools available";
+            toolsList.appendChild(noTools);
+          }
+
+          serverItem.appendChild(toolsList);
+          elements.serverList.appendChild(serverItem);
+        });
+      }
+
+      // Add a message to the UI
+      function addMessageToUI(role, content, isPartial = false) {
+        let messageContainer;
+
+        if (!isPartial) {
+          // Create a new message
+          messageContainer = document.createElement("div");
+          messageContainer.className = "message-container";
+
+          const messageHeader = document.createElement("div");
+          messageHeader.className = "message-header";
+          messageHeader.textContent = role === "user" ? "You" : "Assistant";
+          messageContainer.appendChild(messageHeader);
+
+          const message = document.createElement("div");
+          message.className = `message ${role}-message`;
+          message.textContent = content;
+          messageContainer.appendChild(message);
+
+          elements.messagesContainer.appendChild(messageContainer);
+          elements.messagesContainer.scrollTop =
+            elements.messagesContainer.scrollHeight;
+
+          return messageContainer;
+        } else {
+          // Update the existing message
+          messageContainer = elements.messagesContainer.lastElementChild;
+          const message = messageContainer.querySelector(`.${role}-message`);
+          if (message) {
+            message.textContent = content;
+            elements.messagesContainer.scrollTop =
+              elements.messagesContainer.scrollHeight;
+          }
+          return messageContainer;
+        }
+      }
+
+      // Add a tool call to the UI
+      function addToolCallToUI(toolName, toolInput, parent) {
+        const toolCall = document.createElement("div");
+        toolCall.className = "tool-call";
+        toolCall.innerHTML = `<strong>Tool Call:</strong> ${toolName}<pre>${JSON.stringify(
+          toolInput,
+          null,
+          2
+        )}</pre>`;
+        parent.appendChild(toolCall);
+        elements.messagesContainer.scrollTop =
+          elements.messagesContainer.scrollHeight;
+        return toolCall;
+      }
+
+      // Add a tool result to the UI
+      function addToolResultToUI(toolResult, parent) {
+        const toolResultElem = document.createElement("div");
+        toolResultElem.className = "tool-result";
+        toolResultElem.innerHTML = `<strong>Tool Result:</strong><pre>${JSON.stringify(
+          toolResult,
+          null,
+          2
+        )}</pre>`;
+        parent.appendChild(toolResultElem);
+        elements.messagesContainer.scrollTop =
+          elements.messagesContainer.scrollHeight;
+        return toolResultElem;
+      }
+
+      // Add a thinking indicator
+      function addThinkingIndicator() {
+        const indicator = document.createElement("div");
+        indicator.className = "thinking-indicator";
+        indicator.innerHTML = `
+        Claude is thinking<div class="thinking-dots">
+          <div class="dot"></div>
+          <div class="dot"></div>
+          <div class="dot"></div>
+        </div>
+      `;
+        elements.messagesContainer.appendChild(indicator);
+        elements.messagesContainer.scrollTop =
+          elements.messagesContainer.scrollHeight;
+        return indicator;
+      }
+
+      // Remove thinking indicator
+      function removeThinkingIndicator(indicator) {
+        if (indicator && indicator.parentNode) {
+          indicator.parentNode.removeChild(indicator);
+        }
+      }
+
+      // Send a message to the API
+      async function sendMessage() {
+        const prompt = elements.promptInput.value.trim();
+        if (!prompt || !state.apiKey) return;
+
+        // Clear input
+        elements.promptInput.value = "";
+
+        // Disable send button while processing
+        elements.sendButton.disabled = true;
+
+        // Add user message to UI only (don't add to state.messages here)
+        addMessageToUI("user", prompt);
+
+        // Add thinking indicator
+        const thinkingIndicator = addThinkingIndicator();
+
+        try {
+          await sendToAnthropicAPI(prompt);
+        } catch (error) {
+          console.error("Error sending message:", error);
+          const errorMessage = document.createElement("div");
+          errorMessage.className = "message assistant-message";
+          errorMessage.innerHTML = `<strong>Error:</strong> ${
+            error.message || "Failed to send message. Please try again."
+          }`;
+          elements.messagesContainer.appendChild(errorMessage);
+        } finally {
+          // Remove thinking indicator
+          removeThinkingIndicator(thinkingIndicator);
+
+          // Re-enable send button
+          elements.sendButton.disabled = false;
+        }
+      }
+
+      // Parse the event stream
+      async function* parseEventStream(stream) {
+        const reader = stream.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buffer = [];
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            for (let byte of value) {
+              if (
+                byte === 10 &&
+                (buffer[buffer.length - 1] === 10 ||
+                  (buffer[buffer.length - 1] === 13 &&
+                    buffer[buffer.length - 2] === 10 &&
+                    buffer[buffer.length - 3] === 13))
+              ) {
+                const line = decoder.decode(new Uint8Array(buffer));
+                const entries = line
+                  .split("\n")
+                  .filter((k) => k)
+                  .map((k) => {
+                    const colonIndex = k.indexOf(": ");
+                    if (colonIndex === -1) return [k, ""];
+                    return [k.slice(0, colonIndex), k.slice(colonIndex + 2)];
+                  });
+
+                yield Object.fromEntries(entries);
+                buffer = [];
+              } else {
+                buffer.push(byte);
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Error reading stream:", error);
+        }
+      }
+
+      // Send message to Anthropic API
+      async function sendToAnthropicAPI(prompt) {
+        const endpoint = "https://api.anthropic.com/v1/messages";
+        const headers = {
+          "Content-Type": "application/json",
+          "X-API-Key": state.apiKey,
+          "Anthropic-Version": "2023-06-01",
+          "Anthropic-Beta": "token-efficient-tools-2025-02-19",
+          "Anthropic-Dangerous-Direct-Browser-Access": "true",
+        };
+
+        // Create a list of tools from all servers
+        const tools = Object.values(state.servers).flatMap(
+          (serverInfo) => serverInfo.tools || []
+        );
+
+        // If this is a new user message (not a tool result)
+        if (prompt) {
+          // Add the user message to history
+          state.messages.push({
+            role: "user",
+            content: [{ type: "text", text: prompt }],
+          });
+        }
+
+        // Log the full message history for debugging
+        console.log(
+          "Sending message history:",
+          JSON.stringify(state.messages, null, 2)
+        );
+
+        // Abort any existing streams
+        if (state.activeStreamController) {
+          state.activeStreamController.abort();
+        }
+
+        // Create a new AbortController for this request
+        const controller = new AbortController();
+        state.activeStreamController = controller;
+
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: headers,
+          body: JSON.stringify({
+            model: "claude-3-7-sonnet-20250219",
+            messages: state.messages,
+            tools: tools,
+            max_tokens: 4096,
+            stream: true,
+          }),
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(
+            error.error?.message || `API returned status ${response.status}`
+          );
+        }
+
+        // Create a container for the assistant message
+        let assistantContainer = null;
+        let currentTextContent = "";
+        let currentJsonContent = "";
+        let currentToolUse = null;
+        let assistantMessageContent = [];
+
+        // Process the stream
+        for await (const event of parseEventStream(response.body)) {
+          if (event.event === "ping") continue;
+
+          if (!event.data) continue;
+
+          const data = JSON.parse(event.data);
+
+          if (data.type === "message_start") {
+            state.currentAssistantMessage = data.message;
+            state.messageIdCounter++;
+            assistantMessageContent = [];
+          } else if (data.type === "content_block_start") {
+            const contentBlock = data.content_block;
+
+            if (contentBlock.type === "text") {
+              currentTextContent = contentBlock.text || "";
+              assistantContainer = addMessageToUI(
+                "assistant",
+                currentTextContent
+              );
+
+              // Add to assistant message content array
+              if (
+                !assistantMessageContent.some((item) => item.type === "text")
+              ) {
+                assistantMessageContent.push({
+                  type: "text",
+                  text: currentTextContent,
+                });
+              }
+            } else if (contentBlock.type === "tool_use") {
+              currentToolUse = {
+                id: contentBlock.id,
+                name: contentBlock.name,
+                input: {},
+              };
+
+              // If this is the first content, create a container
+              if (!assistantContainer) {
+                assistantContainer = addMessageToUI("assistant", "");
+              }
+            }
+          } else if (data.type === "content_block_delta") {
+            if (data.delta.type === "text_delta") {
+              currentTextContent += data.delta.text;
+              addMessageToUI("assistant", currentTextContent, true);
+
+              // Update the text in the content array
+              const textItem = assistantMessageContent.find(
+                (item) => item.type === "text"
+              );
+              if (textItem) {
+                textItem.text = currentTextContent;
+              }
+            } else if (data.delta.type === "input_json_delta") {
+              if (currentToolUse) {
+                currentJsonContent += data.delta.partial_json || "";
+              }
+            }
+          } else if (data.type === "content_block_stop") {
+            if (currentToolUse) {
+              try {
+                const parsedJson = JSON.parse(currentJsonContent);
+                currentToolUse.input = parsedJson;
+              } catch (e) {
+                // Ignore parsing errors for partial JSON
+                console.error("Error processing tool use delta:", e);
+              }
+
+              // Add the tool call to the UI
+              console.log("Adding tool call to UI", currentToolUse);
+              addToolCallToUI(
+                currentToolUse.name,
+                currentToolUse.input,
+                assistantContainer
+              );
+
+              // Add the tool use to the message content array
+              assistantMessageContent.push({
+                type: "tool_use",
+                id: currentToolUse.id,
+                name: currentToolUse.name,
+                input: currentToolUse.input,
+              });
+
+              // Handle the tool call
+              handleToolCall(currentToolUse, assistantContainer);
+
+              currentToolUse = null;
+            }
+          } else if (data.type === "message_delta") {
+            if (data.delta.stop_reason === "tool_use") {
+              state.isWaitingForToolResult = true;
+
+              // Make sure we store the assistant message with tool_use in the history
+              if (
+                assistantMessageContent.some((item) => item.type === "tool_use")
+              ) {
+                // Check if we've already added this message
+                const lastMessage = state.messages[state.messages.length - 1];
+                if (
+                  lastMessage.role !== "assistant" ||
+                  !lastMessage.content.some((item) => item.type === "tool_use")
+                ) {
+                  state.messages.push({
+                    role: "assistant",
+                    content: assistantMessageContent,
+                  });
+
+                  console.log(
+                    "Added assistant tool use to history on message_delta:",
+                    JSON.stringify(assistantMessageContent, null, 2)
+                  );
+                }
+              }
+            }
+          } else if (data.type === "message_stop") {
+            // Message completed
+            // If not waiting for tool result and has text content, add to history
+            if (
+              !state.isWaitingForToolResult &&
+              assistantMessageContent.length > 0
+            ) {
+              // Check if we've already added this message
+              const lastMessage = state.messages[state.messages.length - 1];
+              if (
+                lastMessage.role !== "assistant" ||
+                JSON.stringify(lastMessage.content) !==
+                  JSON.stringify(assistantMessageContent)
+              ) {
+                state.messages.push({
+                  role: "assistant",
+                  content: assistantMessageContent,
+                });
+
+                console.log(
+                  "Added final assistant message to history:",
+                  JSON.stringify(assistantMessageContent, null, 2)
+                );
+              }
+            }
+
+            state.currentAssistantMessage = null;
+            state.activeStreamController = null;
+          }
+        }
+      }
+
+      // Handle a tool call
+      async function handleToolCall(toolCall, parentContainer) {
+        const { id, name, input } = toolCall;
+
+        // Find the server and tool
+        let toolServer = null;
+        let toolInfo = null;
+
+        for (const [serverId, serverInfo] of Object.entries(state.servers)) {
+          if (serverInfo.tools) {
+            const matchingTool = serverInfo.tools.find(
+              (tool) => tool.name === name
+            );
+            if (matchingTool) {
+              toolServer = serverId;
+              toolInfo = matchingTool;
+              break;
+            }
+          }
+        }
+
+        if (!toolServer || !toolInfo) {
+          console.error(`Tool ${name} not found in any server`);
+          const errorResult = {
+            is_error: true,
+            content: `Tool ${name} not found in any available server`,
+          };
+          addToolResultToUI(errorResult, parentContainer);
+          return;
+        }
+
+        try {
+          // Make sure the assistant message with the tool_use is in the history
+          const lastMessage = state.messages[state.messages.length - 1];
+          if (
+            lastMessage.role !== "assistant" ||
+            !lastMessage.content.some(
+              (item) => item.type === "tool_use" && item.id === id
+            )
+          ) {
+            // Add the assistant message with tool_use to history
+            state.messages.push({
+              role: "assistant",
+              content: [
+                {
+                  type: "tool_use",
+                  id: id,
+                  name: name,
+                  input: input,
+                },
+              ],
+            });
+
+            console.log(
+              "Added assistant tool use to history:",
+              id,
+              name,
+              input
+            );
+          }
+
+          // Call the tool using RPC
+          const result = await RPC(toolServer, name, input);
+
+          // Add the result to UI
+          addToolResultToUI(result, parentContainer);
+
+          // Send the tool result back to continue the conversation
+          await sendToolResult(id, result);
+        } catch (error) {
+          console.error(`Error executing tool ${name}:`, error);
+          const errorResult = {
+            is_error: true,
+            content: `Error executing tool: ${
+              error.message || "Unknown error"
+            }`,
+          };
+          addToolResultToUI(errorResult, parentContainer);
+
+          // Send the error as a tool result
+          await sendToolResult(id, errorResult);
+        }
+      }
+
+      // Send a tool result back to the API
+      async function sendToolResult(toolUseId, result) {
+        // Reset the waiting flag
+        state.isWaitingForToolResult = false;
+
+        // Format the tool result message
+        const toolResultMessage = {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: toolUseId,
+              content:
+                typeof result === "string" ? result : JSON.stringify(result),
+              is_error: result.is_error || false,
+            },
+          ],
+        };
+
+        // Add to message history
+        state.messages.push(toolResultMessage);
+
+        // Log the full message history for debugging
+        console.log(
+          "Current message history:",
+          JSON.stringify(state.messages, null, 2)
+        );
+
+        // Continue the conversation by sending all messages back to the API
+        const endpoint = "https://api.anthropic.com/v1/messages";
+        const headers = {
+          "Content-Type": "application/json",
+          "X-API-Key": state.apiKey,
+          "Anthropic-Version": "2023-06-01",
+          "Anthropic-Beta": "token-efficient-tools-2025-02-19",
+          "Anthropic-Dangerous-Direct-Browser-Access": "true",
+        };
+
+        // Create a list of tools from all servers
+        const tools = Object.values(state.servers).flatMap(
+          (serverInfo) => serverInfo.tools || []
+        );
+
+        // Add thinking indicator
+        const thinkingIndicator = addThinkingIndicator();
+
+        try {
+          // Abort any existing streams
+          if (state.activeStreamController) {
+            state.activeStreamController.abort();
+          }
+
+          // Create a new AbortController for this request
+          const controller = new AbortController();
+          state.activeStreamController = controller;
+
+          const response = await fetch(endpoint, {
+            method: "POST",
+            headers: headers,
+            body: JSON.stringify({
+              model: "claude-3-7-sonnet-20250219",
+              messages: state.messages,
+              tools: tools,
+              max_tokens: 4096,
+              stream: true,
+            }),
+            signal: controller.signal,
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(
+              error.error?.message || `API returned status ${response.status}`
+            );
+          }
+
+          // Process the stream
+          let assistantContainer = null;
+          let currentTextContent = "";
+          let currentJsonContent = "";
+          let currentToolUse = null;
+          let assistantMessageContent = [];
+
+          for await (const event of parseEventStream(response.body)) {
+            if (event.event === "ping") continue;
+
+            if (!event.data) continue;
+
+            const data = JSON.parse(event.data);
+
+            if (data.type === "message_start") {
+              state.currentAssistantMessage = data.message;
+              assistantMessageContent = []; // Initialize content array for the new message
+            } else if (data.type === "content_block_start") {
+              const contentBlock = data.content_block;
+
+              if (contentBlock.type === "text") {
+                currentTextContent = contentBlock.text || "";
+                assistantContainer = addMessageToUI(
+                  "assistant",
+                  currentTextContent
+                );
+              } else if (contentBlock.type === "tool_use") {
+                currentToolUse = {
+                  id: contentBlock.id,
+                  name: contentBlock.name,
+                  input: {},
+                };
+
+                // If this is the first content, create a container
+                if (!assistantContainer) {
+                  assistantContainer = addMessageToUI("assistant", "");
+                }
+              }
+            } else if (data.type === "content_block_delta") {
+              if (data.delta.type === "text_delta") {
+                currentTextContent += data.delta.text;
+                addMessageToUI("assistant", currentTextContent, true);
+              } else if (data.delta.type === "input_json_delta") {
+                console.log("my tool use");
+                if (currentToolUse) {
+                  currentJsonContent += data.delta.partial_json || "";
+                }
+              }
+            } else if (data.type === "content_block_stop") {
+              if (currentToolUse) {
+                // Add the tool call to the UI
+                addToolCallToUI(
+                  currentToolUse.name,
+                  currentToolUse.input,
+                  assistantContainer
+                );
+
+                if (currentJsonContent) {
+                  // Attempt to parse the accumulated JSON
+                  try {
+                    const parsedJson = JSON.parse(currentJsonContent);
+                    currentToolUse.input = parsedJson;
+                  } catch (e) {
+                    console.log("partial json error", currentJsonContent);
+                    // Ignore parsing errors for partial JSON
+                  }
+                }
+
+                // Add the tool use to the message content array
+                assistantMessageContent.push({
+                  type: "tool_use",
+                  id: currentToolUse.id,
+                  name: currentToolUse.name,
+                  input: currentToolUse.input,
+                });
+
+                // Handle the tool call
+                handleToolCall(currentToolUse, assistantContainer);
+
+                currentToolUse = null;
+              } else if (currentTextContent) {
+                // Add the text content to the message content array if it's not already there
+                if (
+                  !assistantMessageContent.some((item) => item.type === "text")
+                ) {
+                  assistantMessageContent.push({
+                    type: "text",
+                    text: currentTextContent,
+                  });
+                }
+              }
+            } else if (data.type === "message_delta") {
+              if (data.delta.stop_reason === "tool_use") {
+                state.isWaitingForToolResult = true;
+              }
+            } else if (data.type === "message_stop") {
+              // Message completed
+              // Store the assistant message before ending
+              if (assistantMessageContent.length > 0) {
+                state.messages.push({
+                  role: "assistant",
+                  content: assistantMessageContent,
+                });
+              }
+
+              state.currentAssistantMessage = null;
+              state.activeStreamController = null;
+            }
+          }
+
+          // Add the complete message to history if not waiting for tool result and not already added
+          if (
+            !state.isWaitingForToolResult &&
+            currentTextContent &&
+            assistantMessageContent.length > 0
+          ) {
+            // Check if we've already added this message
+            const lastMessage = state.messages[state.messages.length - 1];
+            if (
+              lastMessage.role !== "assistant" ||
+              !lastMessage.content.some(
+                (item) =>
+                  item.type === "text" && item.text === currentTextContent
+              )
+            ) {
+              state.messages.push({
+                role: "assistant",
+                content: [{ type: "text", text: currentTextContent }],
+              });
+            }
+          }
+        } catch (error) {
+          console.error("Error sending tool result:", error);
+          const errorMessage = document.createElement("div");
+          errorMessage.className = "message assistant-message";
+          errorMessage.innerHTML = `<strong>Error:</strong> ${
+            error.message || "Failed to process tool result. Please try again."
+          }`;
+          elements.messagesContainer.appendChild(errorMessage);
+        } finally {
+          // Remove thinking indicator
+          removeThinkingIndicator(thinkingIndicator);
+        }
+      }
+
+      // Initialize the app when loaded
+      document.addEventListener("DOMContentLoaded", init);
+    </script>
+  </body>
+</html>
