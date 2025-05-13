@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CADDR-MCP Graphviz Server</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@hpcc-js/wasm@1.14.1/dist/index.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@hpcc-js/wasm@1.14.1/dist/graphviz.min.js"></script>
+    <style>
+      body {
+        font-family: "Inter", sans-serif;
+        background-color: #f9fafb;
+      }
+      .dot-input {
+        height: 200px;
+        font-family: monospace;
+      }
+      #graphOutput {
+        border: 1px solid #e5e7eb;
+        min-height: 300px;
+        background-color: white;
+      }
+    </style>
+  </head>
+  <body class="p-6">
+    <div class="max-w-6xl mx-auto">
+      <header class="flex justify-between items-center mb-8">
+        <h1 class="text-3xl font-bold text-gray-800">
+          CADDR-MCP Graphviz Server
+        </h1>
+        <iframe
+          id="caddrFrame"
+          frameborder="0"
+          class="w-[300px] h-[80px]"
+        ></iframe>
+      </header>
+
+      <div class="bg-white shadow-md rounded-lg p-6 mb-6">
+        <h2 class="text-xl font-semibold mb-4">Graphviz DOT Renderer</h2>
+        <p class="text-gray-600 mb-4">
+          Enter DOT language code below to generate a graph visualization. This
+          service uses the Graphviz engine to render directed and undirected
+          graphs.
+        </p>
+
+        <div class="mt-6">
+          <h3 class="text-lg font-medium text-gray-800 mb-2">Graph Output</h3>
+          <div
+            id="graphOutput"
+            class="p-4 rounded-md overflow-auto flex justify-center items-center"
+          >
+            <p class="text-gray-400">Graph will appear here</p>
+          </div>
+        </div>
+
+        <div class="mb-4">
+          <label
+            for="dotInput"
+            class="block text-sm font-medium text-gray-700 mb-2"
+            >DOT Language Input</label
+          >
+          <textarea
+            id="dotInput"
+            class="w-full dot-input p-3 border border-gray-300 rounded-md shadow-sm"
+            placeholder="digraph G {
+    A -> B;
+    B -> C;
+    C -> A;
+  }"
+          ></textarea>
+        </div>
+
+        <button
+          id="renderButton"
+          class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition"
+        >
+          Render Graph
+        </button>
+      </div>
+
+      <div id="dataBox" class="bg-white shadow-md rounded-lg p-6 mb-6">
+        <h2 class="text-xl font-semibold mb-4">Server Information</h2>
+        <p>
+          This server provides a tool for rendering Graphviz DOT language into
+          visual graphs.
+        </p>
+        <p class="text-sm text-gray-600 mt-2">
+          Connect via the CADDR-MCP system to use this tool programmatically.
+        </p>
+      </div>
+    </div>
+
+    <script src="api.js"></script>
+
+    <script>
+      let graphviz;
+
+      // Initialize graphviz
+      async function initGraphviz() {
+        try {
+          graphviz = window["@hpcc-js/wasm"].graphviz;
+
+          // Set up a default example if input is empty
+          if (!dotInput.value.trim()) {
+            dotInput.value = `digraph G {
+  rankdir=LR;
+  node [shape=box, style="filled", color="#4299E1", fillcolor="#EBF8FF"];
+  edge [color="#2B6CB0"];
+  
+  A [label="Start"];
+  B [label="Process"];
+  C [label="Decision", shape=diamond];
+  D [label="End"];
+  
+  A -> B;
+  B -> C;
+  C -> D [label="Yes"];
+  C -> B [label="No", constraint=false];
+}`;
+          }
+        } catch (error) {
+          console.error("Failed to initialize Graphviz:", error);
+          document.getElementById("graphOutput").innerHTML = `
+          <div class="text-red-500">
+            Failed to initialize Graphviz. Error: ${error.message}
+          </div>
+        `;
+        }
+      }
+
+      // Render the graph from DOT language
+      async function renderGraph(dotSource) {
+        if (!graphviz) {
+          await initGraphviz();
+        }
+
+        try {
+          const svg = await graphviz.layout(dotSource, "svg", "dot");
+          return svg;
+        } catch (error) {
+          console.error("Graph rendering error:", error);
+          return `<div class="text-red-500 p-4">
+          Error rendering graph: ${error.message}
+        </div>`;
+        }
+      }
+
+      // Handle button click
+      document
+        .getElementById("renderButton")
+        .addEventListener("click", async () => {
+          const dotSource = document.getElementById("dotInput").value;
+          const graphOutput = document.getElementById("graphOutput");
+
+          graphOutput.innerHTML =
+            '<div class="text-gray-400">Rendering graph...</div>';
+
+          try {
+            const svg = await renderGraph(dotSource);
+            graphOutput.innerHTML = svg;
+          } catch (error) {
+            graphOutput.innerHTML = `
+          <div class="text-red-500">
+            Error rendering graph: ${error.message}
+          </div>
+        `;
+          }
+        });
+
+      // Initialize on page load
+      document.addEventListener("DOMContentLoaded", initGraphviz);
+
+      async function describeServer() {
+        return {
+          name: "graphviz-renderer",
+          version: "1.0.0",
+          tools: [
+            {
+              name: "render_graph",
+              description:
+                "Renders a graph visualization from Graphviz DOT language",
+              input_schema: {
+                type: "object",
+                properties: {
+                  dot_source: {
+                    type: "string",
+                    description:
+                      "The Graphviz DOT language source code for the graph",
+                  },
+                  engine: {
+                    type: "string",
+                    description:
+                      "The layout engine to use (dot, neato, fdp, sfdp, twopi, circo)",
+                    enum: ["dot", "neato", "fdp", "sfdp", "twopi", "circo"],
+                    default: "dot",
+                  },
+                },
+                required: ["dot_source"],
+              },
+            },
+          ],
+        };
+      }
+
+      function hideAuthorizationFrame() {
+        caddrFrame.style.position = "absolute";
+        caddrFrame.style.top = "-10000px";
+        caddrFrame.style.left = "-10000px";
+      }
+
+      Object.assign(requestHandlers, {
+        async render_graph(sender, params) {
+          if (!params.dot_source) {
+            return { error: "Missing dot_source parameter" };
+          }
+
+          try {
+            const engine = params.engine || "dot";
+            if (!graphviz) {
+              await initGraphviz();
+            }
+            document.getElementById("dotInput").value = params.dot_source;
+            const svg = await graphviz.layout(params.dot_source, "svg", engine);
+            // return { svg };
+
+            graphOutput.innerHTML = svg;
+
+            return "Rendered graph";
+          } catch (error) {
+            return { error: error.message };
+          }
+        },
+
+        async gimmeStuff(sender) {
+          await NOTIFY(sender.from, "addServer", await describeServer());
+        },
+
+        async onConnect(sender, params) {
+          if (sender.from === "") {
+            hasBroadcastChannel = params.hasBroadcastChannel;
+            hideAuthorizationFrame();
+            await NOTIFY("*", "newServerAdded", null);
+          }
+        },
+      });
+    </script>
+  </body>
+</html>

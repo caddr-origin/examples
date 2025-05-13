@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CADDR-MCP PDF Viewer</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PDF.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <style>
+      .dropzone {
+        border: 2px dashed #3b82f6;
+        border-radius: 8px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.3s ease;
+      }
+      .dropzone.active {
+        border-color: #10b981;
+        background-color: rgba(16, 185, 129, 0.1);
+      }
+      #pdf-viewer {
+        width: 100%;
+        overflow-y: auto;
+      }
+      .page-container {
+        margin: 10px auto;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+      }
+      .pdf-page {
+        border: 1px solid #e5e7eb;
+      }
+    </style>
+  </head>
+  <body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+      <h1 class="text-3xl font-bold text-gray-800 mb-4">
+        CADDR-MCP PDF Viewer
+      </h1>
+
+      <!-- CADDR Frame -->
+      <iframe
+        id="caddrFrame"
+        frameborder="0"
+        class="w-full max-w-md h-20 mb-4"
+      ></iframe>
+
+      <!-- PDF Viewer Area -->
+      <div
+        id="pdf-container"
+        class="dropzone h-[calc(100vh-200px)] p-8 bg-white w-full"
+      >
+        <div id="drop-message" class="text-center">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-16 w-16 mx-auto text-blue-500 mb-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"
+            />
+          </svg>
+          <p class="text-lg font-medium text-gray-700">
+            Drag & drop a PDF file here
+          </p>
+          <p class="text-sm text-gray-500 mt-2">or</p>
+          <button
+            id="select-file-btn"
+            class="mt-4 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition"
+          >
+            Select PDF File
+          </button>
+          <input type="file" id="file-input" accept=".pdf" class="hidden" />
+        </div>
+        <div id="pdf-viewer" class="hidden">
+          <!-- PDF pages will be rendered here -->
+        </div>
+      </div>
+
+      <!-- Navigation Controls -->
+      <div class="flex items-center justify-center mt-4 space-x-4">
+        <button
+          id="prev-page"
+          class="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded-md disabled:opacity-50"
+          disabled
+        >
+          Previous
+        </button>
+        <div class="flex items-center">
+          <input
+            type="number"
+            id="page-num-input"
+            min="1"
+            value="1"
+            class="border border-gray-300 rounded-md px-2 py-1 w-16 text-center"
+            disabled
+          />
+          <span id="current-page-display" class="ml-2">/ -</span>
+        </div>
+        <button
+          id="next-page"
+          class="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded-md disabled:opacity-50"
+          disabled
+        >
+          Next
+        </button>
+      </div>
+    </div>
+
+    <script src="api.js"></script>
+    <script>
+      // Initialize PDF.js worker
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+      // Elements
+      const dropContainer = document.getElementById("pdf-container");
+      const dropMessage = document.getElementById("drop-message");
+      const pdfViewer = document.getElementById("pdf-viewer");
+      const fileInput = document.getElementById("file-input");
+      const selectFileBtn = document.getElementById("select-file-btn");
+      const prevPageBtn = document.getElementById("prev-page");
+      const nextPageBtn = document.getElementById("next-page");
+      const pageNumInput = document.getElementById("page-num-input");
+      const currentPageDisplay = document.getElementById(
+        "current-page-display"
+      );
+
+      // PDF variables
+      let pdfDoc = null;
+      let currentPageNum = 1;
+      let pageRendering = false;
+      let pageNumPending = null;
+      const scale = 1.2;
+      const pageMap = new Map(); // Store page elements by page number
+
+      // Handle file selection
+      selectFileBtn.addEventListener("click", () => {
+        fileInput.click();
+      });
+
+      // File input change handler
+      fileInput.addEventListener("change", (e) => {
+        if (e.target.files.length) {
+          const file = e.target.files[0];
+          if (file.type === "application/pdf") {
+            loadPdf(file);
+          } else {
+            alert("Please select a valid PDF file");
+          }
+        }
+      });
+
+      // Drag & drop handlers
+      ["dragenter", "dragover", "dragleave", "drop"].forEach((eventName) => {
+        dropContainer.addEventListener(
+          eventName,
+          (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          },
+          false
+        );
+      });
+
+      ["dragenter", "dragover"].forEach((eventName) => {
+        dropContainer.addEventListener(
+          eventName,
+          () => {
+            dropContainer.classList.add("active");
+          },
+          false
+        );
+      });
+
+      ["dragleave", "drop"].forEach((eventName) => {
+        dropContainer.addEventListener(
+          eventName,
+          () => {
+            dropContainer.classList.remove("active");
+          },
+          false
+        );
+      });
+
+      dropContainer.addEventListener(
+        "drop",
+        (e) => {
+          const file = e.dataTransfer.files[0];
+          if (file && file.type === "application/pdf") {
+            loadPdf(file);
+          } else {
+            alert("Please drop a valid PDF file");
+          }
+        },
+        false
+      );
+
+      // Load PDF file
+      function loadPdf(file) {
+        const fileReader = new FileReader();
+
+        fileReader.onload = function () {
+          const typedArray = new Uint8Array(this.result);
+
+          pdfjsLib
+            .getDocument(typedArray)
+            .promise.then(function (pdf) {
+              pdfDoc = pdf;
+              currentPageNum = 1;
+              pageNumInput.min = 1;
+              pageNumInput.max = pdf.numPages;
+              pageNumInput.value = 1;
+              pageNumInput.disabled = false;
+              prevPageBtn.disabled = currentPageNum <= 1;
+              nextPageBtn.disabled = currentPageNum >= pdf.numPages;
+              currentPageDisplay.textContent = `/ ${pdf.numPages}`;
+
+              // Show PDF viewer, hide drop message
+              dropMessage.classList.add("hidden");
+              pdfViewer.classList.remove("hidden");
+
+              // Render all pages
+              renderAllPages();
+            })
+            .catch(function (error) {
+              console.error("Error loading PDF:", error);
+              alert("Error loading PDF: " + error.message);
+            });
+        };
+
+        fileReader.readAsArrayBuffer(file);
+      }
+
+      // Render all PDF pages
+      async function renderAllPages() {
+        pdfViewer.innerHTML = "";
+        pageMap.clear();
+
+        for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+          const pageContainer = document.createElement("div");
+          pageContainer.className = "page-container";
+          pageContainer.id = `page-container-${pageNum}`;
+          pageContainer.dataset.pageNumber = pageNum;
+
+          const canvas = document.createElement("canvas");
+          canvas.className = "pdf-page";
+          canvas.id = `page-${pageNum}`;
+
+          pageContainer.appendChild(canvas);
+          pdfViewer.appendChild(pageContainer);
+          pageMap.set(pageNum, pageContainer);
+
+          try {
+            const page = await pdfDoc.getPage(pageNum);
+            const viewport = page.getViewport({ scale });
+
+            // Set canvas dimensions
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+            pageContainer.style.width = `${viewport.width}px`;
+
+            // Render PDF page
+            const renderContext = {
+              canvasContext: canvas.getContext("2d"),
+              viewport: viewport,
+            };
+
+            await page.render(renderContext).promise;
+
+            // Add page number label
+            const pageLabel = document.createElement("div");
+            pageLabel.className = "text-center text-sm text-gray-500 mt-1";
+            pageLabel.textContent = `Page ${pageNum} of ${pdfDoc.numPages}`;
+            pageContainer.appendChild(pageLabel);
+
+            // Update current page when scrolling into view
+            const observer = new IntersectionObserver(
+              (entries) => {
+                entries.forEach((entry) => {
+                  if (entry.isIntersecting) {
+                    updateCurrentPage(
+                      parseInt(entry.target.dataset.pageNumber)
+                    );
+                  }
+                });
+              },
+              { threshold: 0.5 }
+            );
+
+            observer.observe(pageContainer);
+          } catch (error) {
+            console.error(`Error rendering page ${pageNum}:`, error);
+          }
+        }
+      }
+
+      // Update current page indicator
+      function updateCurrentPage(pageNum) {
+        currentPageNum = pageNum;
+        currentPageDisplay.textContent = `/ ${pdfDoc.numPages}`;
+        pageNumInput.value = pageNum;
+        prevPageBtn.disabled = pageNum <= 1;
+        nextPageBtn.disabled = pageNum >= pdfDoc.numPages;
+      }
+
+      // Scroll to a specific page
+      function scrollToPage(pageNum) {
+        if (!pdfDoc || pageNum < 1 || pageNum > pdfDoc.numPages) return;
+
+        const pageElement = pageMap.get(parseInt(pageNum));
+        if (pageElement) {
+          pageElement.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }
+
+      // Get text content from a specific page
+      async function getPageText(pageNum) {
+        if (!pdfDoc || pageNum < 1 || pageNum > pdfDoc.numPages) return null;
+
+        try {
+          const page = await pdfDoc.getPage(pageNum);
+          const textContent = await page.getTextContent();
+          return textContent.items.map((item) => item.str).join(" ");
+        } catch (error) {
+          console.error(`Error getting text from page ${pageNum}:`, error);
+          return null;
+        }
+      }
+
+      // Navigation buttons
+      prevPageBtn.addEventListener("click", () => {
+        if (currentPageNum > 1) {
+          scrollToPage(currentPageNum - 1);
+        }
+      });
+
+      nextPageBtn.addEventListener("click", () => {
+        if (currentPageNum < pdfDoc.numPages) {
+          scrollToPage(currentPageNum + 1);
+        }
+      });
+
+      pageNumInput.addEventListener("change", () => {
+        const pageNum = parseInt(pageNumInput.value);
+        if (pageNum >= 1 && pageNum <= pdfDoc.numPages) {
+          scrollToPage(pageNum);
+        }
+      });
+
+      // Update the page number display when the input changes
+      pageNumInput.addEventListener("input", () => {
+        if (pdfDoc) {
+          currentPageDisplay.textContent = `/ ${pdfDoc.numPages}`;
+        }
+      });
+
+      // CADDR-MCP Server configuration
+      async function describeServer() {
+        return {
+          name: "pdf-viewer",
+          version: "1.0.0",
+          tools: [
+            {
+              name: "get_pdf_page_count",
+              description:
+                "Gets the total number of pages in the currently loaded PDF.",
+              input_schema: {
+                type: "object",
+                properties: {},
+                required: [],
+              },
+            },
+            {
+              name: "get_pdf_page_text",
+              description:
+                "Gets the text content from a specific page in the PDF.",
+              input_schema: {
+                type: "object",
+                properties: {
+                  page_number: {
+                    type: "integer",
+                    description:
+                      "The page number to extract text from (starting from 1).",
+                  },
+                },
+                required: ["page_number"],
+              },
+            },
+            {
+              name: "scroll_to_page",
+              description: "Scrolls the PDF viewer to a specific page.",
+              input_schema: {
+                type: "object",
+                properties: {
+                  page_number: {
+                    type: "integer",
+                    description:
+                      "The page number to scroll to (starting from 1).",
+                  },
+                },
+                required: ["page_number"],
+              },
+            },
+          ],
+        };
+      }
+
+      function hideAuthorizationFrame() {
+        caddrFrame.style.position = "absolute";
+        caddrFrame.style.top = "-10000px";
+        caddrFrame.style.left = "-10000px";
+      }
+
+      // Request handlers for the CADDR-MCP server
+      Object.assign(requestHandlers, {
+        async get_pdf_page_count(sender) {
+          if (!pdfDoc) return 0;
+          return pdfDoc.numPages;
+        },
+
+        async get_pdf_page_text(sender, params) {
+          if (!pdfDoc) return "No PDF loaded";
+          const pageNum = params.page_number;
+          if (pageNum < 1 || pageNum > pdfDoc.numPages) {
+            return `Invalid page number. PDF has ${pdfDoc.numPages} pages.`;
+          }
+          const text = await getPageText(pageNum);
+          return text || "(No text content in this page)";
+        },
+
+        async scroll_to_page(sender, params) {
+          if (!pdfDoc) return { success: false, message: "No PDF loaded" };
+          const pageNum = params.page_number;
+          if (pageNum < 1 || pageNum > pdfDoc.numPages) {
+            return {
+              success: false,
+              message: `Invalid page number. PDF has ${pdfDoc.numPages} pages.`,
+            };
+          }
+          scrollToPage(pageNum);
+          return { success: true, message: `Scrolled to page ${pageNum}` };
+        },
+
+        async listMethods() {
+          return await describeServer();
+        },
+
+        async gimmeStuff(sender) {
+          await NOTIFY(sender.from, "addServer", await describeServer());
+        },
+
+        async onConnect(sender, params) {
+          if (sender.from === "") {
+            hasBroadcastChannel = params.hasBroadcastChannel;
+            hideAuthorizationFrame();
+            await NOTIFY("*", "newServerAdded", null);
+          }
+        },
+      });
+    </script>
+  </body>
+</html>

@@ -874,6 +874,8 @@
         let currentJsonContent = "";
         let currentToolUse = null;
         let assistantMessageContent = [];
+        // Keep track of whether we've added an assistant message to the history
+        let addedAssistantMessage = false;
 
         // Process the stream
         for await (const event of parseEventStream(response.body)) {
@@ -887,6 +889,7 @@
             state.currentAssistantMessage = data.message;
             state.messageIdCounter++;
             assistantMessageContent = [];
+            addedAssistantMessage = false;
           } else if (data.type === "content_block_start") {
             const contentBlock = data.content_block;
 
@@ -965,57 +968,38 @@
               handleToolCall(currentToolUse, assistantContainer);
 
               currentToolUse = null;
+              currentJsonContent = "";
             }
           } else if (data.type === "message_delta") {
             if (data.delta.stop_reason === "tool_use") {
               state.isWaitingForToolResult = true;
 
-              // Make sure we store the assistant message with tool_use in the history
+              // Only add the message if we haven't already and it has tool_use
               if (
+                !addedAssistantMessage &&
                 assistantMessageContent.some((item) => item.type === "tool_use")
               ) {
-                // Check if we've already added this message
-                const lastMessage = state.messages[state.messages.length - 1];
-                if (
-                  lastMessage.role !== "assistant" ||
-                  !lastMessage.content.some((item) => item.type === "tool_use")
-                ) {
-                  state.messages.push({
-                    role: "assistant",
-                    content: assistantMessageContent,
-                  });
-
-                  console.log(
-                    "Added assistant tool use to history on message_delta:",
-                    JSON.stringify(assistantMessageContent, null, 2)
-                  );
-                }
+                // We'll let handleToolCall manage adding this to avoid duplication
+                addedAssistantMessage = true;
               }
             }
           } else if (data.type === "message_stop") {
             // Message completed
-            // If not waiting for tool result and has text content, add to history
+            // If not waiting for tool result and has content but not yet added to history
             if (
               !state.isWaitingForToolResult &&
-              assistantMessageContent.length > 0
+              assistantMessageContent.length > 0 &&
+              !addedAssistantMessage
             ) {
-              // Check if we've already added this message
-              const lastMessage = state.messages[state.messages.length - 1];
-              if (
-                lastMessage.role !== "assistant" ||
-                JSON.stringify(lastMessage.content) !==
-                  JSON.stringify(assistantMessageContent)
-              ) {
-                state.messages.push({
-                  role: "assistant",
-                  content: assistantMessageContent,
-                });
-
-                console.log(
-                  "Added final assistant message to history:",
-                  JSON.stringify(assistantMessageContent, null, 2)
-                );
-              }
+              state.messages.push({
+                role: "assistant",
+                content: assistantMessageContent,
+              });
+              console.log(
+                "Added final assistant message to history:",
+                JSON.stringify(assistantMessageContent, null, 2)
+              );
+              addedAssistantMessage = true;
             }
 
             state.currentAssistantMessage = null;
@@ -1052,18 +1036,38 @@
             content: `Tool ${name} not found in any available server`,
           };
           addToolResultToUI(errorResult, parentContainer);
+
+          // Always send the tool result back, even for errors
+          await sendToolResult(id, errorResult);
           return;
         }
 
         try {
-          // Make sure the assistant message with the tool_use is in the history
+          // IMPORTANT: We have to make sure the last message is the assistant message with the tool_use
+          // Check if the message already exists in history
           const lastMessage = state.messages[state.messages.length - 1];
-          if (
-            lastMessage.role !== "assistant" ||
-            !lastMessage.content.some(
+          const toolUseExists =
+            lastMessage &&
+            lastMessage.role === "assistant" &&
+            lastMessage.content.some(
               (item) => item.type === "tool_use" && item.id === id
-            )
-          ) {
+            );
+
+          if (!toolUseExists) {
+            // Find any previous assistant message with this tool
+            const assistantMessageIndex = state.messages.findIndex(
+              (msg) =>
+                msg.role === "assistant" &&
+                msg.content.some(
+                  (item) => item.type === "tool_use" && item.id === id
+                )
+            );
+
+            // If there's a previous one with this tool, remove it to avoid duplicates
+            if (assistantMessageIndex !== -1) {
+              state.messages.splice(assistantMessageIndex, 1);
+            }
+
             // Add the assistant message with tool_use to history
             state.messages.push({
               role: "assistant",
@@ -1127,8 +1131,23 @@
           ],
         };
 
-        // Add to message history
-        state.messages.push(toolResultMessage);
+        // Check if we already have this tool result in the message history
+        const existingToolResultIndex = state.messages.findIndex(
+          (msg) =>
+            msg.role === "user" &&
+            msg.content.some(
+              (item) =>
+                item.type === "tool_result" && item.tool_use_id === toolUseId
+            )
+        );
+
+        if (existingToolResultIndex !== -1) {
+          // Replace the existing tool result
+          state.messages[existingToolResultIndex] = toolResultMessage;
+        } else {
+          // Add new tool result to message history
+          state.messages.push(toolResultMessage);
+        }
 
         // Log the full message history for debugging
         console.log(
@@ -1190,6 +1209,7 @@
           let currentJsonContent = "";
           let currentToolUse = null;
           let assistantMessageContent = [];
+          let addedAssistantMessage = false;
 
           for await (const event of parseEventStream(response.body)) {
             if (event.event === "ping") continue;
@@ -1201,6 +1221,7 @@
             if (data.type === "message_start") {
               state.currentAssistantMessage = data.message;
               assistantMessageContent = []; // Initialize content array for the new message
+              addedAssistantMessage = false;
             } else if (data.type === "content_block_start") {
               const contentBlock = data.content_block;
 
@@ -1210,12 +1231,23 @@
                   "assistant",
                   currentTextContent
                 );
+
+                // Add to assistant message content array
+                if (
+                  !assistantMessageContent.some((item) => item.type === "text")
+                ) {
+                  assistantMessageContent.push({
+                    type: "text",
+                    text: currentTextContent,
+                  });
+                }
               } else if (contentBlock.type === "tool_use") {
                 currentToolUse = {
                   id: contentBlock.id,
                   name: contentBlock.name,
                   input: {},
                 };
+                currentJsonContent = "";
 
                 // If this is the first content, create a container
                 if (!assistantContainer) {
@@ -1226,31 +1258,37 @@
               if (data.delta.type === "text_delta") {
                 currentTextContent += data.delta.text;
                 addMessageToUI("assistant", currentTextContent, true);
+
+                // Update text in the assistant message content
+                const textItem = assistantMessageContent.find(
+                  (item) => item.type === "text"
+                );
+                if (textItem) {
+                  textItem.text = currentTextContent;
+                }
               } else if (data.delta.type === "input_json_delta") {
-                console.log("my tool use");
                 if (currentToolUse) {
                   currentJsonContent += data.delta.partial_json || "";
                 }
               }
             } else if (data.type === "content_block_stop") {
               if (currentToolUse) {
+                // Try to parse the accumulated JSON
+                if (currentJsonContent) {
+                  try {
+                    const parsedJson = JSON.parse(currentJsonContent);
+                    currentToolUse.input = parsedJson;
+                  } catch (e) {
+                    console.log("Error parsing tool input JSON:", e);
+                  }
+                }
+
                 // Add the tool call to the UI
                 addToolCallToUI(
                   currentToolUse.name,
                   currentToolUse.input,
                   assistantContainer
                 );
-
-                if (currentJsonContent) {
-                  // Attempt to parse the accumulated JSON
-                  try {
-                    const parsedJson = JSON.parse(currentJsonContent);
-                    currentToolUse.input = parsedJson;
-                  } catch (e) {
-                    console.log("partial json error", currentJsonContent);
-                    // Ignore parsing errors for partial JSON
-                  }
-                }
 
                 // Add the tool use to the message content array
                 assistantMessageContent.push({
@@ -1264,55 +1302,44 @@
                 handleToolCall(currentToolUse, assistantContainer);
 
                 currentToolUse = null;
-              } else if (currentTextContent) {
-                // Add the text content to the message content array if it's not already there
-                if (
-                  !assistantMessageContent.some((item) => item.type === "text")
-                ) {
-                  assistantMessageContent.push({
-                    type: "text",
-                    text: currentTextContent,
-                  });
-                }
               }
             } else if (data.type === "message_delta") {
               if (data.delta.stop_reason === "tool_use") {
                 state.isWaitingForToolResult = true;
+
+                // We'll let handleToolCall manage adding this to avoid duplication
+                if (
+                  !addedAssistantMessage &&
+                  assistantMessageContent.some(
+                    (item) => item.type === "tool_use"
+                  )
+                ) {
+                  addedAssistantMessage = true;
+                }
               }
             } else if (data.type === "message_stop") {
-              // Message completed
-              // Store the assistant message before ending
-              if (assistantMessageContent.length > 0) {
+              // Message completed - only add to history if not waiting for tool result
+              // and message hasn't been added yet
+              if (
+                !state.isWaitingForToolResult &&
+                assistantMessageContent.length > 0 &&
+                !addedAssistantMessage
+              ) {
                 state.messages.push({
                   role: "assistant",
                   content: assistantMessageContent,
                 });
+
+                console.log(
+                  "Added final assistant message to history after tool result:",
+                  JSON.stringify(assistantMessageContent, null, 2)
+                );
+
+                addedAssistantMessage = true;
               }
 
               state.currentAssistantMessage = null;
               state.activeStreamController = null;
-            }
-          }
-
-          // Add the complete message to history if not waiting for tool result and not already added
-          if (
-            !state.isWaitingForToolResult &&
-            currentTextContent &&
-            assistantMessageContent.length > 0
-          ) {
-            // Check if we've already added this message
-            const lastMessage = state.messages[state.messages.length - 1];
-            if (
-              lastMessage.role !== "assistant" ||
-              !lastMessage.content.some(
-                (item) =>
-                  item.type === "text" && item.text === currentTextContent
-              )
-            ) {
-              state.messages.push({
-                role: "assistant",
-                content: [{ type: "text", text: currentTextContent }],
-              });
             }
           }
         } catch (error) {

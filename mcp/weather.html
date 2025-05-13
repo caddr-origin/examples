@@ -48,6 +48,13 @@
         };
       }
 
+      function hideAuthorizationFrame() {
+        // dataBox.style.display = "";
+        caddrFrame.style.position = "absolute";
+        caddrFrame.style.top = "-10000px";
+        caddrFrame.style.left = "-10000px";
+      }
+
       Object.assign(requestHandlers, {
         async get_weather(sender, params) {
           return 72.6;
@@ -61,8 +68,7 @@
         async onConnect(sender, params) {
           if (sender.from === "") {
             hasBroadcastChannel = params.hasBroadcastChannel;
-            // hideAuthorizationFrame();
-            // dataBox.innerText = "Listing methods...";
+            hideAuthorizationFrame();
             await NOTIFY("*", "newServerAdded", null);
           }
         },

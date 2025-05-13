@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en" class="bg-gray-100">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CADDR-MCP Python Server Demo</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      .output-img {
+        max-width: 100%;
+        max-height: 300px;
+        display: block;
+        margin: 0.5em 0;
+      }
+      #pythonOut pre {
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      .modal-bg {
+        background: rgba(0, 0, 0, 0.35);
+      }
+    </style>
+  </head>
+  <body class="font-sans min-h-screen">
+    <div class="max-w-3xl mx-auto p-6">
+      <div class="flex items-center space-x-3 mb-4">
+        <svg
+          class="w-10 h-10 text-indigo-500"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+        >
+          <rect
+            width="24"
+            height="24"
+            rx="5"
+            fill="currentColor"
+            stroke="none"
+          />
+          <path
+            d="M8 12h8M12 8v8"
+            stroke="white"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
+        </svg>
+        <h1 class="text-3xl font-bold text-gray-800">
+          CADDR-MCP Python Server
+        </h1>
+      </div>
+      <p class="text-gray-600 mb-5">
+        A demonstration of a "CADDR-MCP Server" exposing a Python execution
+        tool, powered by
+        <a
+          href="https://pyodide.org/"
+          target="_blank"
+          class="text-indigo-600 underline"
+          >Pyodide</a
+        >.
+      </p>
+      <div class="rounded border bg-white p-4 shadow mb-4">
+        <h2 class="text-xl font-semibold text-gray-700 mb-2">
+          Python Code Output
+        </h2>
+        <div
+          id="pythonOut"
+          class="bg-gray-50 rounded p-2 border min-h-[60px]"
+        ></div>
+      </div>
+    </div>
+    <!-- The iframe for caddrFrame -->
+    <iframe
+      id="caddrFrame"
+      frameborder="0"
+      style="width: 300px; height: 80px"
+      class="fixed bottom-4 right-4 z-50 border rounded shadow bg-white"
+    ></iframe>
+    <div id="dataBox"></div>
+    <!-- Modal for output if needed -->
+    <div
+      id="bigOutputModal"
+      class="fixed inset-0 flex items-center justify-center hidden modal-bg z-50"
+    >
+      <div class="bg-white rounded shadow-xl max-w-2xl w-full p-6">
+        <div class="flex justify-between items-center mb-2">
+          <span class="font-semibold text-lg">Python Output</span>
+          <button
+            id="closeModal"
+            class="text-gray-500 hover:text-red-600 text-lg"
+          >
+            &times;
+          </button>
+        </div>
+        <div id="modalContent" class="overflow-y-auto max-h-[60vh]"></div>
+      </div>
+    </div>
+
+    <script src="api.js"></script>
+    <!-- Pyodide loader -->
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js"></script>
+    <script>
+      // --- Pyodide setup ---
+      let pyodideReadyPromise = null;
+      let pyodide = null;
+
+      async function ensurePyodide() {
+        if (!pyodideReadyPromise) {
+          pyodideReadyPromise = loadPyodideAndPackages();
+        }
+        await pyodideReadyPromise;
+      }
+
+      async function loadPyodideAndPackages() {
+        pyodide = await loadPyodide({
+          stdin: () => null,
+          stdout: (msg) => (pythonStdoutAccumulator += msg + "\n"),
+          stderr: (msg) => (pythonStdoutAccumulator += msg + "\n"),
+        });
+        // For plotting support, load matplotlib
+        await pyodide.loadPackage(["micropip"]);
+        await pyodide.runPythonAsync(`
+          import micropip
+          await micropip.install("matplotlib")
+          import sys, io
+        `);
+      }
+
+      // --- Output capturing ---
+      let pythonStdoutAccumulator = "";
+
+      async function runPythonCapture(code) {
+        pythonStdoutAccumulator = "";
+        // Special code forwarding for plt.show()
+        const wrapper = `
+import sys
+from io import StringIO, BytesIO
+import base64
+import contextlib
+
+stdout_buf = StringIO()
+stderr_buf = StringIO()
+imgs = []
+
+@contextlib.contextmanager
+def capture_figures():
+    import matplotlib.pyplot as plt
+    figs_before = set(map(id, plt.get_fignums()))
+    yield
+    figs_after = set(map(id, plt.get_fignums()))
+    new_fig_nums = list(set(plt.get_fignums()) - set(figs_before))
+    for num in new_fig_nums:
+        fig = plt.figure(num)
+        img_buf = BytesIO()
+        fig.savefig(img_buf, format='png')
+        img_buf.seek(0)
+        imgs.append(base64.b64encode(img_buf.read()).decode())
+        plt.close(fig)
+
+with contextlib.redirect_stdout(stdout_buf), contextlib.redirect_stderr(stderr_buf):
+    with capture_figures():
+${code
+  .split("\n")
+  .map((line) => "        " + line)
+  .join("\n")}
+
+result = {'stdout': stdout_buf.getvalue() + stderr_buf.getvalue(), 'images': imgs}
+`;
+        let result;
+        try {
+          result = await pyodide.runPythonAsync(wrapper + "\nresult");
+        } catch (e) {
+          return { stdout: e.toString(), images: [] };
+        }
+        return result;
+      }
+
+      // --- UI Output ---
+      function displayPythonOutput(obj) {
+        const out = document.getElementById("pythonOut");
+        const modal = document.getElementById("bigOutputModal");
+        const modalContent = document.getElementById("modalContent");
+        if (!obj) {
+          out.innerHTML = "";
+          return;
+        }
+        let html = "";
+        if (
+          (obj.stdout && obj.stdout.length > 1500) ||
+          (obj.images && obj.images.length >= 2)
+        ) {
+          // Big output, show modal
+          let modalHtml = "";
+          if (obj.stdout)
+            modalHtml += `<pre class="whitespace-pre-wrap text-gray-800">${escapeHtml(
+              obj.stdout
+            )}</pre>`;
+          if (obj.images && obj.images.length) {
+            for (const img of obj.images)
+              modalHtml += `<img class="output-img" src="data:image/png;base64,${img}"/>`;
+          }
+          modalContent.innerHTML = modalHtml;
+          modal.classList.remove("hidden");
+          out.innerHTML = `<em class="text-gray-400">Output is shown in a modal window due to its size.</em>`;
+          return;
+        }
+        if (obj.stdout)
+          html += `<pre class="whitespace-pre-wrap text-gray-800">${escapeHtml(
+            obj.stdout
+          )}</pre>`;
+        if (obj.images && obj.images.length) {
+          for (const img of obj.images)
+            html += `<img class="output-img" src="data:image/png;base64,${img}"/>`;
+        }
+        if (!html) html = `<span class="italic text-gray-400">No output</span>`;
+        out.innerHTML = html;
+        // auto-hide modal if small output
+        document.getElementById("bigOutputModal").classList.add("hidden");
+      }
+
+      function escapeHtml(text) {
+        return text.replace(
+          /[<>&'"]/g,
+          (c) =>
+            ({
+              "<": "&lt;",
+              ">": "&gt;",
+              "&": "&amp;",
+              "'": "&#39;",
+              '"': "&quot;",
+            }[c])
+        );
+      }
+
+      // Modal close logic
+      document.getElementById("closeModal").onclick = () => {
+        document.getElementById("bigOutputModal").classList.add("hidden");
+      };
+
+      // --- CADDR-MCP Server Protocol ---
+      async function describeServer() {
+        return {
+          name: "python-exec",
+          version: "1.0.0",
+          tools: [
+            {
+              name: "run_python",
+              description:
+                "Run a snippet of Python code. Captures stdout, and any images generated via matplotlib.pyplot. Output is a JSON object with keys 'stdout', and 'images' (base64 PNG, if any).",
+              input_schema: {
+                type: "object",
+                properties: {
+                  code: {
+                    type: "string",
+                    description:
+                      "Python code to run. May contain code that prints or creates matplotlib figures.",
+                  },
+                },
+                required: ["code"],
+              },
+            },
+          ],
+        };
+      }
+
+      function hideAuthorizationFrame() {
+        caddrFrame.style.position = "absolute";
+        caddrFrame.style.top = "-10000px";
+        caddrFrame.style.left = "-10000px";
+      }
+
+      Object.assign(requestHandlers, {
+        async run_python(sender, params) {
+          await ensurePyodide();
+          const result = await runPythonCapture(params.code);
+          displayPythonOutput(result);
+          const obj = Object.fromEntries(result.toJs().entries());
+          delete obj.images;
+          return obj;
+        },
+        async gimmeStuff(sender) {
+          await NOTIFY(sender.from, "addServer", await describeServer());
+        },
+        async onConnect(sender, params) {
+          if (sender.from === "") {
+            hasBroadcastChannel = params.hasBroadcastChannel;
+            hideAuthorizationFrame();
+            await NOTIFY("*", "newServerAdded", null);
+          }
+        },
+      });
+
+      // --- Demo: Run a default script for demonstration
+      // Slightly delayed to let pyodide load visually
+      (async () => {
+        await ensurePyodide();
+        // Run a simple matplotlib script as demo
+        const demoCode = `
+import matplotlib.pyplot as plt
+import numpy as np
+`;
+        const result = await runPythonCapture(demoCode);
+        // displayPythonOutput(result);
+      })();
+    </script>
+  </body>
+</html>
