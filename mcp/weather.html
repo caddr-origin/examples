@@ -48,6 +48,7 @@
               required: ["city"],
             },
             async execute(sender, params) {
+              await new Promise((resolve) => setTimeout(resolve, 1000));
               return 72.6;
             },
           },
