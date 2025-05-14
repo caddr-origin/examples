@@ -49,8 +49,6 @@
     </div>
 
     <script src="api.js"></script>
-    <script src="https://danchitnis.github.io/ngspice/emcc/build/ngspice.js" async id="ngspice-script" style="display:none"></script>
-
     <script>
       // Global variables
       let ngspiceLoaded = false;
@@ -64,16 +62,29 @@
         document.getElementById("status").textContent = "Loading...";
         
         return new Promise((resolve, reject) => {
-          // Check if Module is already defined (script might have loaded)
-          if (typeof Module !== 'undefined') {
-            configureModule();
-            resolve();
+          // Define a function to configure the Module
+          function configureModule() {
+            if (typeof Module !== 'undefined' && Module.calledRun) {
+              console.log("NGSpice already initialized");
+              document.getElementById("loadingIndicator").style.display = "none";
+              document.getElementById("status").textContent = "Ready";
+              ngspiceLoaded = true;
+              resolve();
+              return true;
+            }
+            return false;
+          }
+          
+          // Check if Module is already defined and configured (script might have loaded)
+          if (configureModule()) {
             return;
           }
           
           // Define Module configuration
           window.Module = {
             arguments: ["-b"],
+            noInitialRun: true,  // Prevent automatic execution on load
+            noExitRuntime: true, // Keep the runtime alive after main() exits
             preRun: [() => {
               console.log("NGSpice preRun initialized");
             }],
