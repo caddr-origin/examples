@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vega-Lite Visualization Server</title>
+    <!-- Load Vega and Vega-Lite from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vega/5.22.1/vega.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vega-lite/5.6.0/vega-lite.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vega-embed/6.21.0/vega-embed.min.js"></script>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        margin: 0;
+        padding: 20px;
+        background-color: #f5f5f5;
+      }
+      h1 {
+        color: #333;
+        border-bottom: 1px solid #ddd;
+        padding-bottom: 10px;
+      }
+      #vis {
+        width: 100%;
+        height: 400px;
+        background-color: white;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        margin-bottom: 20px;
+      }
+      #logs {
+        background-color: #f8f8f8;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 10px;
+        font-family: monospace;
+        white-space: pre-wrap;
+        max-height: 200px;
+        overflow-y: auto;
+      }
+      .log-item {
+        margin-bottom: 5px;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 5px;
+      }
+      .error {
+        color: #e53935;
+      }
+      .success {
+        color: #43a047;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Vega-Lite Visualization Server</h1>
+
+    <div id="authorizationFrame" style="display: none">
+      <h1>Authorization</h1>
+      <p>Please authorize this server to visualize your data.</p>
+    </div>
+
+    <div id="dataBox">
+      <div id="vis"></div>
+      <h3>Visualization Logs</h3>
+      <div id="logs"></div>
+    </div>
+    
+    <script src="api.js"></script>
+
+    <script>
+      registerMCPServer({
+        insertFrame: (frame) => {
+          document.getElementById("authorizationFrame").appendChild(frame);
+        },
+        showAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "block";
+        },
+        hideAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "none";
+        },
+        name: "vega-lite visualization",
+        version: "1.0.0",
+        tools: [
+          {
+            name: "visualize_data",
+            description: "Visualize data using a Vega-Lite specification.",
+            input_schema: {
+              type: "object",
+              properties: {
+                data: {
+                  type: "array",
+                  description: "The data to visualize, as an array of objects."
+                },
+                spec: {
+                  type: "object",
+                  description: "Vega-Lite specification object that defines the visualization."
+                }
+              },
+              required: ["data", "spec"],
+            },
+            async execute(sender, params) {
+              // Clear previous visualization and logs
+              document.getElementById("vis").innerHTML = "";
+              const logsElement = document.getElementById("logs");
+              logsElement.innerHTML = "";
+              
+              let logs = [];
+              const addLog = (message, type = 'info') => {
+                const logItem = document.createElement('div');
+                logItem.className = `log-item ${type}`;
+                logItem.textContent = message;
+                logsElement.appendChild(logItem);
+                logs.push({ message, type });
+              };
+              
+              try {
+                addLog("Starting visualization process...");
+                
+                // Check if data is valid
+                if (!Array.isArray(params.data)) {
+                  throw new Error("Data must be an array of objects");
+                }
+                
+                addLog(`Data received: ${params.data.length} items`);
+                
+                // Check if spec is valid
+                if (!params.spec || typeof params.spec !== 'object') {
+                  throw new Error("Spec must be a valid Vega-Lite specification object");
+                }
+                
+                // Combine the data with the Vega-Lite spec
+                const fullSpec = {
+                  ...params.spec,
+                  data: { values: params.data }
+                };
+                
+                addLog("Rendering visualization...");
+                
+                // Embed the visualization
+                const viewResult = await vegaEmbed('#vis', fullSpec, {
+                  actions: true, // Show the export menu
+                  renderer: 'svg'
+                });
+                
+                addLog("Visualization rendered successfully", "success");
+                
+                // Return success result
+                return {
+                  success: true,
+                  logs: logs,
+                  view: {
+                    width: viewResult.view.width(),
+                    height: viewResult.view.height()
+                  }
+                };
+              } catch (error) {
+                addLog(`Error: ${error.message}`, "error");
+                console.error("Visualization error:", error);
+                
+                // Return error result
+                return {
+                  success: false,
+                  logs: logs,
+                  error: error.message
+                };
+              }
+            },
+          },
+        ],
+      });
+    </script>
+  </body>
+</html>
