@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CADDR-MCP NGSpice Server</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 20px;
+        line-height: 1.6;
+      }
+      h1 {
+        color: #333;
+      }
+      #authorizationFrame {
+        padding: 15px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        margin-bottom: 15px;
+      }
+      #statusBox {
+        margin-top: 10px;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        background-color: #f8f8f8;
+      }
+      #loadingIndicator {
+        display: none;
+        color: #0066cc;
+        margin-top: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>CADDR-MCP NGSpice Simulation Server</h1>
+    <p>This server provides circuit simulation capabilities using NGSpice running in WebAssembly.</p>
+
+    <div id="authorizationFrame" style="display: none">
+      <h2>Authorization</h2>
+      <p>Please authorize this server to run circuit simulations.</p>
+    </div>
+
+    <div id="statusBox">
+      NGSpice server status: <span id="status">Ready</span>
+      <div id="loadingIndicator">Loading NGSpice WASM module...</div>
+    </div>
+
+    <script src="api.js"></script>
+    <script src="https://danchitnis.github.io/ngspice/emcc/build/ngspice.js" async id="ngspice-script" style="display:none"></script>
+
+    <script>
+      // Global variables
+      let ngspiceLoaded = false;
+      let simulationResults = {};
+      let simulationStatus = "idle";
+      let ngspiceOutput = "";
+      
+      // Function to initialize NGSpice
+      async function initNGSpice() {
+        document.getElementById("loadingIndicator").style.display = "block";
+        document.getElementById("status").textContent = "Loading...";
+        
+        return new Promise((resolve, reject) => {
+          // Check if Module is already defined (script might have loaded)
+          if (typeof Module !== 'undefined') {
+            configureModule();
+            resolve();
+            return;
+          }
+          
+          // Define Module configuration
+          window.Module = {
+            arguments: ["-b"],
+            preRun: [() => {
+              console.log("NGSpice preRun initialized");
+            }],
+            postRun: [() => {
+              console.log("NGSpice initialization complete");
+              document.getElementById("loadingIndicator").style.display = "none";
+              document.getElementById("status").textContent = "Ready";
+              ngspiceLoaded = true;
+              resolve();
+            }],
+            print: (function() {
+              return function(text) {
+                if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(" ");
+                console.log(text);
+                ngspiceOutput += text + "\n";
+              };
+            })(),
+            onRuntimeInitialized: function() {
+              console.log("NGSpice runtime initialized");
+            },
+            onAbort: function(what) {
+              console.error("NGSpice aborted: " + what);
+              document.getElementById("status").textContent = "Error: " + what;
+              reject(what);
+            }
+          };
+          
+          // The script should already be included, but we'll check
+          if (document.getElementById("ngspice-script") === null) {
+            const script = document.createElement("script");
+            script.id = "ngspice-script";
+            script.src = "https://danchitnis.github.io/ngspice/emcc/build/ngspice.js";
+            script.async = true;
+            script.onload = () => {
+              console.log("NGSpice script loaded");
+            };
+            script.onerror = (e) => {
+              console.error("Failed to load NGSpice script", e);
+              document.getElementById("status").textContent = "Failed to load NGSpice";
+              reject("Failed to load NGSpice script");
+            };
+            document.body.appendChild(script);
+          }
+        });
+      }
+
+      // Function to run a SPICE simulation
+      async function runSimulation(netlist, modelFiles = {}) {
+        if (!ngspiceLoaded) {
+          try {
+            await initNGSpice();
+          } catch (error) {
+            return { error: "Failed to initialize NGSpice: " + error };
+          }
+        }
+        
+        try {
+          simulationStatus = "running";
+          document.getElementById("status").textContent = "Running simulation...";
+          ngspiceOutput = "";
+          
+          // Write netlist to a file
+          FS.writeFile("/sim.cir", netlist);
+          
+          // Write any model files
+          for (const [filename, content] of Object.entries(modelFiles)) {
+            FS.writeFile("/" + filename, content);
+          }
+          
+          // Run the simulation
+          Module.arguments = ["-b", "sim.cir"];
+          Module.callMain(Module.arguments);
+          
+          // Process the results
+          let results = {
+            output: ngspiceOutput,
+            success: !ngspiceOutput.includes("Error") && !ngspiceOutput.includes("error"),
+            rawOutput: ngspiceOutput
+          };
+          
+          // Check if there are raw files to read
+          try {
+            const files = FS.readdir("/");
+            const rawFiles = files.filter(f => f.endsWith('.raw'));
+            
+            if (rawFiles.length > 0) {
+              results.rawFiles = {};
+              for (const rawFile of rawFiles) {
+                const rawContent = FS.readFile("/" + rawFile, { encoding: 'binary' });
+                // Convert binary raw file to base64 for transport
+                const base64 = btoa(
+                  Array.from(new Uint8Array(rawContent))
+                    .map(b => String.fromCharCode(b))
+                    .join('')
+                );
+                results.rawFiles[rawFile] = base64;
+              }
+            }
+          } catch (e) {
+            console.warn("Failed to read raw files:", e);
+          }
+          
+          simulationStatus = "complete";
+          document.getElementById("status").textContent = "Ready";
+          return results;
+          
+        } catch (error) {
+          simulationStatus = "error";
+          document.getElementById("status").textContent = "Error";
+          console.error("Simulation error:", error);
+          return { error: "Simulation failed: " + error, output: ngspiceOutput };
+        }
+      }
+
+      // Register the MCP server
+      registerMCPServer({
+        insertFrame: (frame) => {
+          document.getElementById("authorizationFrame").appendChild(frame);
+        },
+        showAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "block";
+        },
+        hideAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "none";
+        },
+        name: "ngspice",
+        version: "1.0.0",
+        tools: [
+          {
+            name: "run_spice_simulation",
+            description: "Run a SPICE circuit simulation and return the results",
+            input_schema: {
+              type: "object",
+              properties: {
+                netlist: {
+                  type: "string",
+                  description: "The SPICE netlist to simulate"
+                },
+                modelFiles: {
+                  type: "object",
+                  description: "Optional model files as key-value pairs (filename: content)",
+                  additionalProperties: { type: "string" }
+                }
+              },
+              required: ["netlist"]
+            },
+            async execute(sender, params) {
+              try {
+                const result = await runSimulation(params.netlist, params.modelFiles || {});
+                return result;
+              } catch (error) {
+                console.error("Error executing simulation:", error);
+                return { error: "Failed to run simulation: " + error.message };
+              }
+            }
+          }
+        ]
+      });
+
+      // Initialize NGSpice when the page loads (optional pre-loading)
+      window.addEventListener('load', () => {
+        // We can lazy load to avoid immediate download of the WASM module
+        // Uncomment to initialize immediately:
+        // initNGSpice().catch(console.error);
+      });
+    </script>
+  </body>
+</html>
