@@ -309,7 +309,7 @@ async function configureFrame() {
 
   let url = new URL(hostOrigin);
   url.searchParams.set("src", contractURL);
-  if (searchParams.get("useRedirect"))
+  if (searchParams.get("useRedirect") !== 'false')
     url.searchParams.set("useRedirect", "true");
   caddrFrame.setAttribute("src", url);
 }
