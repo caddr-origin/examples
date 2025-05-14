@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+  <head>
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="JSCAD is an open source set of modular, browser and command line tools for creating parametric 2D and 3D CAD designs with JavaScript code."/>
+    <title>CADDR-MCP OpenJSCAD Server</title>
+    <style>
+      body {
+        height: 100vh;
+        margin: 0;
+        padding: 0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        display: flex;
+        flex-direction: column;
+      }
+      
+      h1 {
+        margin: 0;
+        padding: 10px;
+        background-color: #f0f0f0;
+        border-bottom: 1px solid #ddd;
+        font-size: 1.2rem;
+      }
+      
+      #authorizationFrame {
+        padding: 10px;
+        background-color: #f8f8f8;
+        border-bottom: 1px solid #ddd;
+      }
+      
+      #dataBox {
+        flex-grow: 1;
+        display: flex;
+        flex-direction: column;
+      }
+      
+      #jscad-container {
+        flex-grow: 1;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+      }
+      
+      #jscad {
+        flex-grow: 1;
+        width: 100%;
+        height: 100%;
+        min-height: 400px;
+      }
+      
+      #status-bar {
+        background-color: #f0f0f0;
+        padding: 8px 10px;
+        border-top: 1px solid #ddd;
+        font-size: 0.9rem;
+        min-height: 20px;
+      }
+      
+      .error {
+        color: #d32f2f;
+      }
+      
+      .success {
+        color: #388e3c;
+      }
+      
+      noscript {
+        text-align: center;
+        padding: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>CADDR-MCP OpenJSCAD Server</h1>
+
+    <div id="authorizationFrame" style="display: none">
+      <h2>Authorization</h2>
+      <p>Please authorize this server to access your JSCAD models.</p>
+    </div>
+
+    <div id="dataBox">
+      <div id="jscad-container">
+        <div id="jscad"></div>
+        <div id="status-bar">Ready</div>
+      </div>
+    </div>
+
+    <noscript>
+      <h1>Please enable JavaScript to use this website</h1>
+    </noscript>
+
+    <!-- Load OpenJSCAD from CDN -->
+    <script src="https://unpkg.com/@jscad/web@2.6.10/dist/jscad-web.min.js"></script>
+    <script src="api.js"></script>
+
+    <script>
+      // Initialize OpenJSCAD instance
+      const jscadElement = document.getElementById('jscad');
+      let jscadInstance;
+      let currentCode = '';
+      let lastError = null;
+      let originalConsoleError;
+      const statusBar = document.getElementById('status-bar');
+
+      // Function to initialize JSCAD
+      function initJSCAD() {
+        try {
+          jscadInstance = jscadWeb(jscadElement, {
+            name: 'jscad1',
+            // Additional initialization options can be added here
+          });
+          
+          updateStatus('OpenJSCAD initialized successfully', 'success');
+          
+          // Set up event listeners for errors
+          // Replace console.error to capture errors
+          originalConsoleError = console.error;
+          console.error = function(...args) {
+            lastError = args.join(' ');
+            updateStatus('Error: ' + lastError, 'error');
+            originalConsoleError.apply(console, args);
+          };
+          
+          // Add listener for editor changes
+          if (jscadInstance && jscadInstance.editor) {
+            const editorInstance = jscadInstance.editor.getEditor();
+            if (editorInstance) {
+              editorInstance.on('change', () => {
+                currentCode = editorInstance.getValue();
+              });
+              
+              // Get initial code
+              currentCode = editorInstance.getValue();
+            }
+          }
+          
+          return true;
+        } catch (error) {
+          updateStatus('Failed to initialize OpenJSCAD: ' + error.message, 'error');
+          lastError = error.message;
+          return false;
+        }
+      }
+
+      // Function to update the status bar
+      function updateStatus(message, type = '') {
+        statusBar.textContent = message;
+        statusBar.className = type;
+      }
+
+      // Function to get current code from editor
+      function getCode() {
+        try {
+          if (jscadInstance && jscadInstance.editor) {
+            const editorInstance = jscadInstance.editor.getEditor();
+            if (editorInstance) {
+              return editorInstance.getValue();
+            }
+          }
+          return currentCode;
+        } catch (error) {
+          updateStatus('Error getting code: ' + error.message, 'error');
+          return currentCode;
+        }
+      }
+
+      // Function to set code in editor
+      function setCode(newCode) {
+        try {
+          if (jscadInstance && jscadInstance.editor) {
+            const editorInstance = jscadInstance.editor.getEditor();
+            if (editorInstance) {
+              editorInstance.setValue(newCode);
+              // Trigger re-evaluation
+              if (jscadInstance.processor) {
+                setTimeout(() => {
+                  jscadInstance.processor.rebuildSolids();
+                  updateStatus('Code updated and model rebuilt', 'success');
+                }, 100);
+              }
+              return true;
+            }
+          }
+          updateStatus('Failed to update code: Editor not available', 'error');
+          return false;
+        } catch (error) {
+          updateStatus('Error setting code: ' + error.message, 'error');
+          return false;
+        }
+      }
+
+      // Function to check for errors
+      function getErrors() {
+        return lastError;
+      }
+
+      // Define default example code
+      const defaultCode = `// Example: Create a simple cube
+const { cube } = require('@jscad/modeling').primitives
+const { translate } = require('@jscad/modeling').transforms
+
+const main = () => {
+  return translate([0, 0, 5], cube({ size: 10 }))
+}
+
+module.exports = { main }`;
+
+      // Initialize JSCAD when the page loads
+      window.addEventListener('load', () => {
+        const initialized = initJSCAD();
+        if (initialized && currentCode === '') {
+          // Set default code if initialized successfully and no code is present
+          setTimeout(() => {
+            setCode(defaultCode);
+          }, 500);
+        }
+      });
+
+      // Register the MCP server
+      registerMCPServer({
+        insertFrame: (frame) => {
+          document.getElementById("authorizationFrame").appendChild(frame);
+        },
+        showAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "block";
+        },
+        hideAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "none";
+        },
+        name: "openjscad",
+        version: "1.0.0",
+        tools: [
+          {
+            name: "get_jscad_code",
+            description: "Get the current code from the OpenJSCAD editor",
+            input_schema: {
+              type: "object",
+              properties: {},
+              required: [],
+            },
+            execute(sender, params) {
+              const code = getCode();
+              return {
+                code: code,
+                length: code.length
+              };
+            },
+          },
+          {
+            name: "set_jscad_code",
+            description: "Replace the current code in the OpenJSCAD editor with new code",
+            input_schema: {
+              type: "object",
+              properties: {
+                code: {
+                  type: "string",
+                  description: "The JavaScript code to set in the editor"
+                }
+              },
+              required: ["code"],
+            },
+            execute(sender, params) {
+              const success = setCode(params.code);
+              return {
+                success: success,
+                message: success ? "Code updated successfully" : "Failed to update code"
+              };
+            },
+          },
+          {
+            name: "get_jscad_errors",
+            description: "Get any errors from the OpenJSCAD execution",
+            input_schema: {
+              type: "object",
+              properties: {},
+              required: [],
+            },
+            execute(sender, params) {
+              const error = getErrors();
+              return {
+                hasError: error !== null,
+                error: error || "No errors",
+              };
+            },
+          }
+        ],
+      });
+    </script>
+  </body>
+</html>
