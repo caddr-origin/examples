@@ -104,6 +104,33 @@
             }
           };
           
+          // Load custom bindings for NGSpice
+          window.NG_POST_RUN = [];
+          window.runNgSpice = function(netlist) {
+            try {
+              // Create a file with the netlist
+              const filename = "/ngspice_input.cir";
+              FS.writeFile(filename, netlist);
+              
+              // Run NGSpice
+              Module.arguments = ["-b", filename];
+              
+              // Try different methods
+              if (typeof Module.callMain === 'function') {
+                Module.callMain(Module.arguments);
+              } else if (typeof Module._main === 'function') {
+                Module._main(Module.arguments.length, Module.arguments);
+              } else {
+                Module.run(Module.arguments);
+              }
+              
+              return true;
+            } catch (e) {
+              console.error("Error running NGSpice:", e);
+              return false;
+            }
+          };
+          
           // Load NGSpice script
           loadNgspiceScript().catch(reject);
         });
@@ -147,24 +174,36 @@
           
           // Run a test circuit first to make sure NGSpice is working
           console.log("Running test circuit...");
-          FS.writeFile("/test.cir", `Test RC Circuit
+          const testNetlist = `Test RC Circuit
 R1 1 2 1k
 C1 2 0 1u
 V1 1 0 DC 5
-.end`);
+.tran 1u 10u
+.control
+run
+.endc
+.end`;
           
-          Module.arguments = ["-b", "test.cir"];
-          const testResult = Module.run(Module.arguments);
-          console.log("Test result:", testResult, "Output:", ngspiceOutput);
+          try {
+            console.log("Executing test simulation...");
+            const testResult = window.runNgSpice(testNetlist);
+            console.log("Test result:", testResult, "Output:", ngspiceOutput);
+          } catch (e) {
+            console.error("Test circuit execution error:", e);
+          }
           
           // Clear output for the real simulation
           ngspiceOutput = "";
           
           // Run the actual simulation
           console.log("Running actual simulation...");
-          Module.arguments = ["-b", "sim.cir"];
-          const exitCode = Module.run(Module.arguments);
-          console.log("Simulation complete, exit code:", exitCode);
+          try {
+            const simResult = window.runNgSpice(netlist);
+            console.log("Simulation result:", simResult, "Output:", ngspiceOutput);
+          } catch (e) {
+            console.error("Simulation execution error:", e);
+            ngspiceOutput += "ERROR: " + e.toString() + "\n";
+          }
           
           // Check for output files
           const files = FS.readdir("/");
