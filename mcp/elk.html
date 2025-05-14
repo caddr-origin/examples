@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ELK.js Hierarchical Diagram Server</title>
+    <!-- Load ELK.js from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/elkjs/0.8.2/elk.bundled.min.js"></script>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        margin: 0;
+        padding: 20px;
+        background-color: #f5f5f5;
+      }
+      h1 {
+        color: #333;
+        border-bottom: 1px solid #ddd;
+        padding-bottom: 10px;
+      }
+      #diagram-container {
+        width: 100%;
+        height: 600px;
+        background-color: white;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        margin-bottom: 20px;
+        overflow: auto;
+        position: relative;
+      }
+      #logs {
+        background-color: #f8f8f8;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 10px;
+        font-family: monospace;
+        white-space: pre-wrap;
+        max-height: 200px;
+        overflow-y: auto;
+      }
+      .log-item {
+        margin-bottom: 5px;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 5px;
+      }
+      .error {
+        color: #e53935;
+      }
+      .success {
+        color: #43a047;
+      }
+      
+      /* SVG Styles */
+      .node {
+        stroke: #000;
+        stroke-width: 1px;
+        fill: #fff;
+      }
+      .node text {
+        font-size: 12px;
+        pointer-events: none;
+        text-anchor: middle;
+        dominant-baseline: middle;
+      }
+      .edge {
+        stroke: #000;
+        stroke-width: 1.5px;
+        fill: none;
+      }
+      .port {
+        fill: #000;
+      }
+      .edgePath {
+        stroke: #333;
+        stroke-width: 1.5px;
+        fill: none;
+      }
+      .edgePath-arrow {
+        fill: #333;
+      }
+      .selected {
+        stroke: #1976d2;
+        stroke-width: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>ELK.js Hierarchical Diagram Server</h1>
+
+    <div id="authorizationFrame" style="display: none">
+      <h1>Authorization</h1>
+      <p>Please authorize this server to visualize your hierarchical data.</p>
+    </div>
+
+    <div id="dataBox">
+      <div id="diagram-container"></div>
+      <h3>Visualization Logs</h3>
+      <div id="logs"></div>
+    </div>
+    
+    <script src="api.js"></script>
+
+    <script>
+      // Initialize ELK
+      const elk = new ELK();
+      
+      // Helper function to create an SVG element
+      function createSVGElement(tag) {
+        return document.createElementNS("http://www.w3.org/2000/svg", tag);
+      }
+      
+      // Function to render the graph using the layout computed by ELK
+      function renderGraph(container, graph) {
+        // Clear the container
+        container.innerHTML = '';
+        
+        // Create SVG element
+        const svg = createSVGElement('svg');
+        svg.setAttribute('width', '100%');
+        svg.setAttribute('height', '100%');
+        
+        // Add a group element for zoom/pan (could be implemented)
+        const rootGroup = createSVGElement('g');
+        svg.appendChild(rootGroup);
+        
+        // Function to recursively render nodes
+        function renderNodes(parent, node) {
+          // Create a group for this node
+          const nodeGroup = createSVGElement('g');
+          nodeGroup.setAttribute('class', 'node-group');
+          nodeGroup.setAttribute('data-id', node.id);
+          nodeGroup.setAttribute('transform', `translate(${node.x}, ${node.y})`);
+          parent.appendChild(nodeGroup);
+          
+          // Create the node rectangle
+          const rect = createSVGElement('rect');
+          rect.setAttribute('class', 'node');
+          rect.setAttribute('width', node.width);
+          rect.setAttribute('height', node.height);
+          rect.setAttribute('rx', 5);
+          rect.setAttribute('ry', 5);
+          nodeGroup.appendChild(rect);
+          
+          // Add label if it exists
+          if (node.labels && node.labels.length > 0) {
+            const label = createSVGElement('text');
+            label.textContent = node.labels[0].text || node.id;
+            label.setAttribute('x', node.width / 2);
+            label.setAttribute('y', node.height / 2);
+            nodeGroup.appendChild(label);
+          } else {
+            // Fallback to node id if no label
+            const label = createSVGElement('text');
+            label.textContent = node.id;
+            label.setAttribute('x', node.width / 2);
+            label.setAttribute('y', node.height / 2);
+            nodeGroup.appendChild(label);
+          }
+          
+          // Render ports if they exist
+          if (node.ports) {
+            node.ports.forEach(port => {
+              const portCircle = createSVGElement('circle');
+              portCircle.setAttribute('class', 'port');
+              portCircle.setAttribute('cx', port.x);
+              portCircle.setAttribute('cy', port.y);
+              portCircle.setAttribute('r', 3);
+              portCircle.setAttribute('data-id', port.id);
+              nodeGroup.appendChild(portCircle);
+            });
+          }
+          
+          // Recursively render children
+          if (node.children) {
+            node.children.forEach(child => {
+              renderNodes(nodeGroup, child);
+            });
+          }
+        }
+        
+        // Function to render edges
+        function renderEdges(parent, edges) {
+          edges.forEach(edge => {
+            if (edge.sections) {
+              edge.sections.forEach(section => {
+                // Create path for this edge section
+                const path = createSVGElement('path');
+                path.setAttribute('class', 'edgePath');
+                path.setAttribute('data-id', edge.id);
+                
+                // Construct the path data
+                let pathData = `M ${section.startPoint.x} ${section.startPoint.y}`;
+                
+                // Add bend points if they exist
+                if (section.bendPoints) {
+                  section.bendPoints.forEach(point => {
+                    pathData += ` L ${point.x} ${point.y}`;
+                  });
+                }
+                
+                // Add end point
+                pathData += ` L ${section.endPoint.x} ${section.endPoint.y}`;
+                path.setAttribute('d', pathData);
+                parent.appendChild(path);
+                
+                // Add arrow at the end
+                const arrow = createSVGElement('polygon');
+                arrow.setAttribute('class', 'edgePath-arrow');
+                
+                // Calculate arrow points
+                const endX = section.endPoint.x;
+                const endY = section.endPoint.y;
+                
+                // Determine the direction of the arrow
+                let dx = 0, dy = -1; // Default: pointing up
+                
+                if (section.bendPoints && section.bendPoints.length > 0) {
+                  // Get the last bend point
+                  const lastBend = section.bendPoints[section.bendPoints.length - 1];
+                  dx = endX - lastBend.x;
+                  dy = endY - lastBend.y;
+                } else {
+                  // Use start point
+                  dx = endX - section.startPoint.x;
+                  dy = endY - section.startPoint.y;
+                }
+                
+                // Normalize
+                const len = Math.sqrt(dx * dx + dy * dy);
+                if (len > 0) {
+                  dx /= len;
+                  dy /= len;
+                }
+                
+                // Calculate arrow points
+                const arrowSize = 6;
+                const p1x = endX;
+                const p1y = endY;
+                const p2x = endX - arrowSize * (dx + dy * 0.5);
+                const p2y = endY - arrowSize * (dy - dx * 0.5);
+                const p3x = endX - arrowSize * (dx - dy * 0.5);
+                const p3y = endY - arrowSize * (dy + dx * 0.5);
+                
+                arrow.setAttribute('points', `${p1x},${p1y} ${p2x},${p2y} ${p3x},${p3y}`);
+                parent.appendChild(arrow);
+              });
+            }
+          });
+        }
+        
+        // Render the graph recursively
+        renderNodes(rootGroup, graph);
+        
+        // Render edges
+        if (graph.edges) {
+          renderEdges(rootGroup, graph.edges);
+        }
+        
+        // Adjust the viewBox to fit the content
+        const width = graph.width || 1000;
+        const height = graph.height || 800;
+        svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+        
+        // Add the SVG to the container
+        container.appendChild(svg);
+        
+        return svg;
+      }
+
+      registerMCPServer({
+        insertFrame: (frame) => {
+          document.getElementById("authorizationFrame").appendChild(frame);
+        },
+        showAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "block";
+        },
+        hideAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "none";
+        },
+        name: "elk hierarchical diagram",
+        version: "1.0.0",
+        tools: [
+          {
+            name: "create_hierarchical_diagram",
+            description: "Create a hierarchical diagram using ELK (Eclipse Layout Kernel)",
+            input_schema: {
+              type: "object",
+              properties: {
+                graph: {
+                  type: "object",
+                  description: "The graph structure in ELK JSON format. Must include nodes, may include edges."
+                },
+                layoutOptions: {
+                  type: "object",
+                  description: "Optional layout options for ELK."
+                }
+              },
+              required: ["graph"],
+            },
+            async execute(sender, params) {
+              // Clear previous diagram and logs
+              const containerElement = document.getElementById("diagram-container");
+              containerElement.innerHTML = "";
+              
+              const logsElement = document.getElementById("logs");
+              logsElement.innerHTML = "";
+              
+              let logs = [];
+              const addLog = (message, type = 'info') => {
+                const logItem = document.createElement('div');
+                logItem.className = `log-item ${type}`;
+                logItem.textContent = message;
+                logsElement.appendChild(logItem);
+                logs.push({ message, type });
+              };
+              
+              try {
+                addLog("Starting diagram layout...");
+                
+                // Validate graph
+                if (!params.graph) {
+                  throw new Error("Graph structure is required");
+                }
+                
+                // Add default layout options if not provided
+                const graph = params.graph;
+                if (!graph.layoutOptions) {
+                  graph.layoutOptions = params.layoutOptions || {
+                    'elk.algorithm': 'layered',
+                    'elk.direction': 'DOWN',
+                    'elk.spacing.nodeNode': '20',
+                    'elk.layered.spacing.nodeNodeBetweenLayers': '40'
+                  };
+                }
+                
+                // Ensure all nodes have dimensions
+                const ensureDimensions = (node) => {
+                  if (!node.width) node.width = 100;
+                  if (!node.height) node.height = 50;
+                  
+                  if (node.children) {
+                    node.children.forEach(ensureDimensions);
+                  }
+                };
+                
+                ensureDimensions(graph);
+                
+                addLog("Computing layout...");
+                
+                // Use ELK to compute the layout
+                const layoutedGraph = await elk.layout(graph);
+                
+                addLog("Layout computed successfully", "success");
+                addLog(`Graph dimensions: ${layoutedGraph.width} × ${layoutedGraph.height}`);
+                
+                // Render the graph
+                addLog("Rendering diagram...");
+                const svg = renderGraph(containerElement, layoutedGraph);
+                
+                addLog("Diagram rendered successfully", "success");
+                
+                // Return success result
+                return {
+                  success: true,
+                  logs: logs,
+                  graphDimensions: {
+                    width: layoutedGraph.width,
+                    height: layoutedGraph.height
+                  }
+                };
+              } catch (error) {
+                addLog(`Error: ${error.message}`, "error");
+                console.error("Visualization error:", error);
+                
+                // Return error result
+                return {
+                  success: false,
+                  logs: logs,
+                  error: error.message
+                };
+              }
+            },
+          },
+        ],
+      });
+    </script>
+  </body>
+</html>
