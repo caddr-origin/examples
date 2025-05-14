@@ -49,252 +49,180 @@
     </div>
 
     <script src="api.js"></script>
+
     <script>
       // Global variables
       let ngspiceLoaded = false;
-      let simulationResults = {};
-      let simulationStatus = "idle";
       let ngspiceOutput = "";
       
-      // Workaround for missing dynamic loading
-      window.dynamicallyLoadNgspice = function() {
+      // Function to load NGSpice script
+      function loadNgspiceScript() {
         return new Promise((resolve, reject) => {
           const script = document.createElement('script');
           script.src = "https://danchitnis.github.io/ngspice/emcc/build/ngspice.js";
+          script.async = true;
           script.onload = () => resolve();
-          script.onerror = (e) => reject(new Error('Failed to load NGSpice script'));
+          script.onerror = () => reject(new Error('Failed to load NGSpice script'));
           document.body.appendChild(script);
         });
-      };
+      }
       
-      // Function to initialize NGSpice
-      async function initNGSpice() {
-        document.getElementById("loadingIndicator").style.display = "block";
-        document.getElementById("status").textContent = "Loading...";
-        
-        try {
-          // Explicitly load the script
-          await window.dynamicallyLoadNgspice();
-          console.log("NGSpice script loaded");
-          
-          return new Promise((resolve, reject) => {
-            // Define a function to configure the Module
-            function configureModule() {
-              if (typeof Module !== 'undefined' && Module.calledRun) {
-                console.log("NGSpice already initialized");
-                document.getElementById("loadingIndicator").style.display = "none";
-                document.getElementById("status").textContent = "Ready";
-                ngspiceLoaded = true;
-                resolve();
-                return true;
-              }
-              return false;
-            }
-            
-            // Check if Module is already defined and configured (script might have loaded)
-            if (configureModule()) {
-              return;
-            }
-          
-          // Define Module configuration
+      // Initialize NGSpice module
+      function initNgspiceModule() {
+        return new Promise((resolve, reject) => {
+          // Configure Module
           window.Module = {
+            noInitialRun: true,
+            noExitRuntime: true,
             arguments: ["-b"],
-            noInitialRun: true,  // Prevent automatic execution on load
-            noExitRuntime: true, // Keep the runtime alive after main() exits
-            preRun: [() => {
-              console.log("NGSpice preRun initialized");
-            }],
+            preRun: [],
             postRun: [() => {
-              console.log("NGSpice initialization complete");
-              document.getElementById("loadingIndicator").style.display = "none";
-              document.getElementById("status").textContent = "Ready";
+              console.log("NGSpice initialized");
               ngspiceLoaded = true;
               resolve();
             }],
-            print: (function() {
-              return function(text) {
-                if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(" ");
-                console.log(text);
-                ngspiceOutput += text + "\n";
-              };
-            })(),
-            onRuntimeInitialized: function() {
-              console.log("NGSpice runtime initialized");
+            print: text => {
+              console.log(text);
+              ngspiceOutput += text + "\n";
             },
-            onAbort: function(what) {
-              console.error("NGSpice aborted: " + what);
-              document.getElementById("status").textContent = "Error: " + what;
+            printErr: text => {
+              console.error(text);
+              ngspiceOutput += "ERROR: " + text + "\n";
+            },
+            stdin: () => null,
+            canvas: (() => {
+              const canvas = document.createElement('canvas');
+              canvas.style.display = 'none';
+              return canvas;
+            })(),
+            onRuntimeInitialized: () => {
+              console.log("Runtime initialized");
+            },
+            onAbort: what => {
+              console.error("NGSpice aborted:", what);
               reject(what);
             }
           };
           
-          // The script should already be included, but we'll check
-          if (document.getElementById("ngspice-script") === null) {
-            const script = document.createElement("script");
-            script.id = "ngspice-script";
-            script.src = "https://danchitnis.github.io/ngspice/emcc/build/ngspice.js";
-            script.async = true;
-            script.onload = () => {
-              console.log("NGSpice script loaded");
-            };
-            script.onerror = (e) => {
-              console.error("Failed to load NGSpice script", e);
-              document.getElementById("status").textContent = "Failed to load NGSpice";
-              reject("Failed to load NGSpice script");
-            };
-            document.body.appendChild(script);
-          }
+          // Load NGSpice script
+          loadNgspiceScript().catch(reject);
         });
       }
-
-      // Function to run a SPICE simulation
+      
+      // Run a simulation
       async function runSimulation(netlist, modelFiles = {}) {
+        const statusElement = document.getElementById("status");
+        const loadingIndicator = document.getElementById("loadingIndicator");
+        
+        // Initialize if not already loaded
         if (!ngspiceLoaded) {
+          statusElement.textContent = "Loading...";
+          loadingIndicator.style.display = "block";
+          
           try {
-            await initNGSpice();
+            await initNgspiceModule();
+            statusElement.textContent = "Ready";
           } catch (error) {
+            statusElement.textContent = "Error loading NGSpice";
+            loadingIndicator.style.display = "none";
             return { error: "Failed to initialize NGSpice: " + error };
           }
+          
+          loadingIndicator.style.display = "none";
         }
         
+        // Run simulation
         try {
-          simulationStatus = "running";
-          document.getElementById("status").textContent = "Running simulation...";
+          statusElement.textContent = "Running simulation...";
           ngspiceOutput = "";
           
-          console.log("Writing netlist file:");
-          console.log(netlist);
-          
-          // Write netlist to a file
+          console.log("Writing netlist file");
           FS.writeFile("/sim.cir", netlist);
           
-          // Write any model files
+          // Write model files
           for (const [filename, content] of Object.entries(modelFiles)) {
             console.log(`Writing model file: ${filename}`);
             FS.writeFile("/" + filename, content);
           }
           
-          // Display all files in the filesystem for debugging
-          console.log("Files in filesystem:");
-          console.log(FS.readdir("/"));
-          
-          // For debugging purposes, let's try a simple known-to-work circuit first
-          console.log("Trying simple test circuit...");
+          // Run a test circuit first to make sure NGSpice is working
+          console.log("Running test circuit...");
           FS.writeFile("/test.cir", `Test RC Circuit
 R1 1 2 1k
 C1 2 0 1u
-V1 1 0 DC 0 PULSE(0 5 0 1n 1n 1u 2u)
-.tran 10n 5u
+V1 1 0 DC 5
 .end`);
           
-          console.log("Running test circuit...");
           Module.arguments = ["-b", "test.cir"];
-          try {
-            const testExitCode = Module.run(Module.arguments);
-            console.log(`Test simulation completed with exit code: ${testExitCode}`);
-            console.log("Test output:", ngspiceOutput);
-          } catch (e) {
-            console.error("Test simulation failed:", e);
-          }
+          const testResult = Module.run(Module.arguments);
+          console.log("Test result:", testResult, "Output:", ngspiceOutput);
           
           // Clear output for the real simulation
           ngspiceOutput = "";
           
-          // Run the actual simulation - use a simpler approach without redirecting output
-          console.log("Running actual NGSpice simulation...");
+          // Run the actual simulation
+          console.log("Running actual simulation...");
           Module.arguments = ["-b", "sim.cir"];
           const exitCode = Module.run(Module.arguments);
-          console.log(`NGSpice simulation completed with exit code: ${exitCode}`);
+          console.log("Simulation complete, exit code:", exitCode);
           
-          console.log("NGSpice output:");
-          console.log(ngspiceOutput);
-          
-          // Check for raw files
-          console.log("Checking for output files...");
+          // Check for output files
           const files = FS.readdir("/");
           console.log("Files after simulation:", files);
           
-          // Process the results
-          let results = {
+          // Process results
+          const results = {
             output: ngspiceOutput,
             success: exitCode === 0,
-            exitCode: exitCode,
-            rawOutput: ngspiceOutput
+            exitCode: exitCode
           };
           
-          // Check if there are raw files to read
+          // Check for raw files or other output
           try {
-            const rawFiles = files.filter(f => f.endsWith('.raw') || f.endsWith('.dat'));
-            
-            if (rawFiles.length > 0) {
-              results.rawFiles = {};
-              for (const rawFile of rawFiles) {
-                console.log(`Reading raw file: ${rawFile}`);
-                const rawContent = FS.readFile("/" + rawFile, { encoding: 'binary' });
-                // Convert binary raw file to base64 for transport
-                const base64 = btoa(
-                  Array.from(new Uint8Array(rawContent))
-                    .map(b => String.fromCharCode(b))
-                    .join('')
-                );
-                results.rawFiles[rawFile] = base64;
-              }
-            } else {
-              console.log("No raw files found");
-            }
-            
-            // Try to find any other output files
             const outputFiles = files.filter(f => 
-              !f.endsWith('.cir') && 
-              !f.startsWith('modelcard') && 
-              f !== 'sim.cir' && 
-              f !== '.' && 
-              f !== '..'
-            );
+              f !== "sim.cir" && 
+              f !== "test.cir" && 
+              !f.startsWith("modelcard") && 
+              f !== "." && 
+              f !== "..");
             
             if (outputFiles.length > 0) {
-              console.log("Found other output files:", outputFiles);
-              if (!results.rawFiles) results.rawFiles = {};
+              results.files = {};
               
-              for (const outFile of outputFiles) {
+              for (const file of outputFiles) {
                 try {
-                  const content = FS.readFile("/" + outFile, { encoding: 'utf8' });
-                  results.rawFiles[outFile] = content;
-                  console.log(`Content of ${outFile}:`, content.substring(0, 200) + "...");
+                  // Try reading as text first
+                  const content = FS.readFile("/" + file, { encoding: 'utf8' });
+                  results.files[file] = content;
                 } catch (e) {
-                  console.warn(`Failed to read file ${outFile} as text:`, e);
-                  // Try binary
+                  // If that fails, read as binary and convert to base64
                   try {
-                    const binaryContent = FS.readFile("/" + outFile, { encoding: 'binary' });
+                    const binaryContent = FS.readFile("/" + file, { encoding: 'binary' });
                     const base64 = btoa(
                       Array.from(new Uint8Array(binaryContent))
                         .map(b => String.fromCharCode(b))
                         .join('')
                     );
-                    results.rawFiles[outFile] = base64;
+                    results.files[file] = base64;
                   } catch (e2) {
-                    console.error(`Failed to read file ${outFile} at all:`, e2);
+                    console.error(`Failed to read file ${file}:`, e2);
                   }
                 }
               }
             }
-          } catch (e) {
-            console.warn("Failed to read output files:", e);
-            results.fileReadError = e.toString();
+          } catch (error) {
+            console.warn("Error reading output files:", error);
           }
           
-          simulationStatus = "complete";
-          document.getElementById("status").textContent = "Ready";
+          statusElement.textContent = "Ready";
           return results;
           
         } catch (error) {
-          simulationStatus = "error";
-          document.getElementById("status").textContent = "Error";
           console.error("Simulation error:", error);
+          statusElement.textContent = "Error";
           return { 
             error: "Simulation failed: " + error, 
-            output: ngspiceOutput,
-            stack: error.stack 
+            output: ngspiceOutput 
           };
         }
       }
@@ -332,23 +260,10 @@ V1 1 0 DC 0 PULSE(0 5 0 1n 1n 1u 2u)
               required: ["netlist"]
             },
             async execute(sender, params) {
-              try {
-                const result = await runSimulation(params.netlist, params.modelFiles || {});
-                return result;
-              } catch (error) {
-                console.error("Error executing simulation:", error);
-                return { error: "Failed to run simulation: " + error.message };
-              }
+              return await runSimulation(params.netlist, params.modelFiles || {});
             }
           }
         ]
-      });
-
-      // Initialize NGSpice when the page loads (optional pre-loading)
-      window.addEventListener('load', () => {
-        // We can lazy load to avoid immediate download of the WASM module
-        // Uncomment to initialize immediately:
-        // initNGSpice().catch(console.error);
       });
     </script>
   </body>
