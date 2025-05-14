@@ -397,6 +397,28 @@
         animation-delay: 0.4s;
       }
 
+      /* Model selector styles */
+      .model-selector {
+        width: 100%;
+        padding: 0.5rem;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        font-size: 0.9rem;
+        margin-top: 0.5rem;
+        background-color: white;
+      }
+
+      .model-selector:focus {
+        outline: none;
+        border-color: var(--primary-color);
+      }
+
+      .api-keys-container {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+
       @keyframes pulse {
         0% {
           transform: scale(0.8);
@@ -429,13 +451,44 @@
         </div>
         <div class="api-key-section">
           <h3>API Key Configuration</h3>
-          <input
-            type="password"
-            id="apiKeyInput"
-            class="api-key-input"
-            placeholder="Enter your Anthropic API key"
-          />
-          <button id="saveApiKey" class="save-key-button">Save API Key</button>
+          <div class="api-keys-container">
+            <div>
+              <input
+                type="password"
+                id="anthropicApiKeyInput"
+                class="api-key-input"
+                placeholder="Enter your Anthropic API key"
+              />
+              <button id="saveAnthropicApiKey" class="save-key-button">
+                Save Anthropic Key
+              </button>
+            </div>
+            <div>
+              <input
+                type="password"
+                id="openaiApiKeyInput"
+                class="api-key-input"
+                placeholder="Enter your OpenAI API key"
+              />
+              <button id="saveOpenaiApiKey" class="save-key-button">
+                Save OpenAI Key
+              </button>
+            </div>
+            <div>
+              <input
+                type="password"
+                id="geminiApiKeyInput"
+                class="api-key-input"
+                placeholder="Enter your Gemini API key"
+              />
+              <button id="saveGeminiApiKey" class="save-key-button">
+                Save Gemini Key
+              </button>
+            </div>
+          </div>
+          <select id="modelSelector" class="model-selector">
+            <!-- Model options will be added dynamically -->
+          </select>
         </div>
 
         <div class="servers-section">
@@ -452,8 +505,10 @@
           <div class="message-container">
             <div class="message-header">Assistant</div>
             <div class="message assistant-message">
-              Hello! Enter your API key in the sidebar to get started, and I'll
-              be ready to help you.
+              Hello! Enter your API key in the sidebar to get started. You can
+              use Anthropic, OpenAI, or Gemini models. After adding your API
+              key, select a model from the dropdown, and I'll be ready to help
+              you.
             </div>
           </div>
         </div>
@@ -473,7 +528,16 @@
     <script>
       // State management
       const state = {
-        apiKey: localStorage.getItem("ANTHROPIC_API_KEY") || "",
+        apiKeys: {
+          anthropic: localStorage.getItem("ANTHROPIC_API_KEY") || "",
+          openai: localStorage.getItem("OPENAI_API_KEY") || "",
+          gemini: localStorage.getItem("GEMINI_API_KEY") || "",
+        },
+        selectedModel:
+          localStorage.getItem("SELECTED_MODEL") ||
+          "claude-3-7-sonnet-20250219",
+        selectedApiType:
+          localStorage.getItem("SELECTED_API_TYPE") || "anthropic",
         messages: [],
         currentAssistantMessage: null,
         servers: {},
@@ -486,30 +550,151 @@
       const elements = {
         sidebarToggle: document.getElementById("sidebarToggle"),
         sidebar: document.getElementById("sidebar"),
-        apiKeyInput: document.getElementById("apiKeyInput"),
-        saveApiKey: document.getElementById("saveApiKey"),
-        // apiKeyStatus: document.getElementById("apiKeyStatus"),
+        anthropicApiKeyInput: document.getElementById("anthropicApiKeyInput"),
+        saveAnthropicApiKey: document.getElementById("saveAnthropicApiKey"),
+        openaiApiKeyInput: document.getElementById("openaiApiKeyInput"),
+        saveOpenaiApiKey: document.getElementById("saveOpenaiApiKey"),
+        geminiApiKeyInput: document.getElementById("geminiApiKeyInput"),
+        saveGeminiApiKey: document.getElementById("saveGeminiApiKey"),
+        modelSelector: document.getElementById("modelSelector"),
         serverList: document.getElementById("serverList"),
         messagesContainer: document.getElementById("messagesContainer"),
         promptInput: document.getElementById("promptInput"),
         sendButton: document.getElementById("sendButton"),
       };
 
+      // Available models configuration
+      function getAvailableModels() {
+        const availableModels = [];
+
+        if (state.apiKeys.anthropic) {
+          availableModels.push({
+            name: "Claude 3.5 Haiku",
+            apiType: "anthropic",
+            modelId: "claude-3-5-haiku-20241022",
+            endpoint: "https://api.anthropic.com/v1/messages",
+          });
+          availableModels.push({
+            name: "Claude 3.7 Sonnet",
+            apiType: "anthropic",
+            modelId: "claude-3-7-sonnet-20250219",
+            endpoint: "https://api.anthropic.com/v1/messages",
+          });
+        }
+
+        if (state.apiKeys.openai) {
+          availableModels.push({
+            name: "GPT-4.1 Nano",
+            apiType: "openai",
+            modelId: "gpt-4.1-nano",
+            endpoint: "https://api.openai.com/v1/chat/completions",
+          });
+          availableModels.push({
+            name: "GPT-4.1 Mini",
+            apiType: "openai",
+            modelId: "gpt-4.1-mini",
+            endpoint: "https://api.openai.com/v1/chat/completions",
+          });
+          availableModels.push({
+            name: "GPT-4.1",
+            apiType: "openai",
+            modelId: "gpt-4.1",
+            endpoint: "https://api.openai.com/v1/chat/completions",
+          });
+          availableModels.push({
+            name: "o3",
+            apiType: "openai",
+            modelId: "o3",
+            endpoint: "https://api.openai.com/v1/chat/completions",
+          });
+        }
+
+        if (state.apiKeys.gemini) {
+          availableModels.push({
+            name: "Gemini 2.5 Flash",
+            apiType: "gemini",
+            modelId: "gemini-2.5-flash-preview-04-17",
+            // Use streamGenerateContent endpoint instead of generateContent
+            endpoint:
+              "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-04-17:streamGenerateContent",
+          });
+          availableModels.push({
+            name: "Gemini 2.5 Pro",
+            apiType: "gemini",
+            modelId: "gemini-2.5-pro-preview-03-25",
+            // Use streamGenerateContent endpoint instead of generateContent
+            endpoint:
+              "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-preview-03-25:streamGenerateContent",
+          });
+        }
+
+        // If no models available, add a placeholder
+        if (availableModels.length === 0) {
+          availableModels.push({
+            name: "No API Keys Found",
+            apiType: "none",
+            modelId: "none",
+            endpoint: "",
+          });
+        }
+
+        return availableModels;
+      }
+
+      // Populate model selector dropdown
+      function populateModelSelector() {
+        const models = getAvailableModels();
+        elements.modelSelector.innerHTML = "";
+
+        models.forEach((model) => {
+          const option = document.createElement("option");
+          option.value = model.modelId;
+          option.dataset.apiType = model.apiType;
+          option.text = model.name;
+          if (model.modelId === state.selectedModel) {
+            option.selected = true;
+          }
+          elements.modelSelector.appendChild(option);
+        });
+      }
+
+      // Update send button state based on API keys
+      function updateSendButtonState() {
+        const hasAnyKey = Object.values(state.apiKeys).some((key) => key);
+        elements.sendButton.disabled = !hasAnyKey;
+      }
+
       // Initialize the interface
       function init() {
         // Set up event listeners
         elements.sidebarToggle.addEventListener("click", toggleSidebar);
-        elements.saveApiKey.addEventListener("click", saveApiKey);
+        elements.saveAnthropicApiKey.addEventListener("click", () =>
+          saveApiKey("anthropic")
+        );
+        elements.saveOpenaiApiKey.addEventListener("click", () =>
+          saveApiKey("openai")
+        );
+        elements.saveGeminiApiKey.addEventListener("click", () =>
+          saveApiKey("gemini")
+        );
+        elements.modelSelector.addEventListener("change", handleModelChange);
         elements.promptInput.addEventListener("keydown", handlePromptKeydown);
         elements.sendButton.addEventListener("click", sendMessage);
 
-        // Load API key from localStorage
-        if (state.apiKey) {
-          elements.apiKeyInput.value = "••••••••••••••••••••••••••";
-          // elements.apiKeyStatus.innerHTML =
-          //   '<span class="status-indicator status-success">API Key Saved</span>';
-          elements.sendButton.disabled = false;
+        // Load API keys from localStorage
+        if (state.apiKeys.anthropic) {
+          elements.anthropicApiKeyInput.value = "••••••••••••••••••••••••••";
         }
+        if (state.apiKeys.openai) {
+          elements.openaiApiKeyInput.value = "••••••••••••••••••••••••••";
+        }
+        if (state.apiKeys.gemini) {
+          elements.geminiApiKeyInput.value = "••••••••••••••••••••••••••";
+        }
+
+        // Populate model selector and update send button state
+        populateModelSelector();
+        updateSendButtonState();
 
         // Initialize message history
         loadMessages();
@@ -522,24 +707,51 @@
         }, 500);
       }
 
+      // Handle model change
+      function handleModelChange(e) {
+        const selectedOption =
+          elements.modelSelector.options[elements.modelSelector.selectedIndex];
+        state.selectedModel = selectedOption.value;
+        state.selectedApiType = selectedOption.dataset.apiType;
+        localStorage.setItem("SELECTED_MODEL", state.selectedModel);
+        localStorage.setItem("SELECTED_API_TYPE", state.selectedApiType);
+      }
+
       // Toggle sidebar visibility
       function toggleSidebar() {
         elements.sidebar.classList.toggle("collapsed");
       }
 
       // Save API key to localStorage
-      function saveApiKey() {
-        const apiKey = elements.apiKeyInput.value.trim();
+      function saveApiKey(provider) {
+        let inputElement, keyName;
+
+        switch (provider) {
+          case "anthropic":
+            inputElement = elements.anthropicApiKeyInput;
+            keyName = "ANTHROPIC_API_KEY";
+            break;
+          case "openai":
+            inputElement = elements.openaiApiKeyInput;
+            keyName = "OPENAI_API_KEY";
+            break;
+          case "gemini":
+            inputElement = elements.geminiApiKeyInput;
+            keyName = "GEMINI_API_KEY";
+            break;
+          default:
+            return;
+        }
+
+        const apiKey = inputElement.value.trim();
         if (apiKey) {
-          localStorage.setItem("ANTHROPIC_API_KEY", apiKey);
-          state.apiKey = apiKey;
-          elements.apiKeyInput.value = "••••••••••••••••••••••••••";
-          // elements.apiKeyStatus.innerHTML =
-          //   '<span class="status-indicator status-success">API Key Saved</span>';
-          elements.sendButton.disabled = false;
-        } else {
-          // elements.apiKeyStatus.innerHTML =
-          //   '<span class="status-indicator status-error">Invalid API Key</span>';
+          localStorage.setItem(keyName, apiKey);
+          state.apiKeys[provider] = apiKey;
+          inputElement.value = "••••••••••••••••••••••••••";
+
+          // Update model selector and button state
+          populateModelSelector();
+          updateSendButtonState();
         }
       }
 
@@ -796,6 +1008,11 @@
         // First remove any existing thinking indicators to prevent duplicates
         removeThinkingIndicator();
 
+        // Check if we're actually waiting for something
+        if (!state.activeStreamController && !state.isWaitingForToolResult) {
+          return null;
+        }
+
         const indicator = document.createElement("div");
         indicator.className = "thinking-indicator";
         indicator.id = "thinking-indicator"; // Add an ID for easier removal
@@ -822,10 +1039,14 @@
         }
 
         // Otherwise, remove any thinking indicators by ID
-        const existingIndicator = document.getElementById("thinking-indicator");
-        if (existingIndicator) {
-          existingIndicator.parentNode.removeChild(existingIndicator);
-        }
+        const existingIndicators = document.querySelectorAll(
+          ".thinking-indicator"
+        );
+        existingIndicators.forEach((indicator) => {
+          if (indicator.parentNode) {
+            indicator.parentNode.removeChild(indicator);
+          }
+        });
       }
 
       // Update the UI for streaming content
@@ -836,14 +1057,46 @@
         // Update the content
         addMessageToUI(role, content, true);
 
-        // Re-add the thinking indicator at the end
-        return addThinkingIndicator();
+        // Re-add the thinking indicator at the end if we're still waiting for more content
+        if (state.activeStreamController) {
+          return addThinkingIndicator();
+        }
+        return null;
+      }
+
+      // Process the stream based on API type
+      async function processStreamEnd() {
+        // Make sure to remove any thinking indicators at the end of streaming
+        removeThinkingIndicator();
+
+        // Clean up stream state
+        state.activeStreamController = null;
+        state.currentAssistantMessage = null;
       }
 
       // Send a message to the API
       async function sendMessage() {
         const prompt = elements.promptInput.value.trim();
-        if (!prompt || !state.apiKey) return;
+        if (!prompt) return;
+
+        // Check if we have an API key for the selected model type
+        const models = getAvailableModels();
+        const modelConfig = models.find(
+          (model) => model.modelId === state.selectedModel
+        );
+
+        if (!modelConfig) {
+          console.error("Selected model not found");
+          return;
+        }
+
+        const apiKey = state.apiKeys[modelConfig.apiType];
+        if (!apiKey && modelConfig.apiType !== "none") {
+          alert(
+            `No API key found for ${modelConfig.apiType}. Please enter an API key first.`
+          );
+          return;
+        }
 
         // Clear input
         elements.promptInput.value = "";
@@ -861,15 +1114,61 @@
           await sendToAnthropicAPI(prompt);
         } catch (error) {
           console.error("Error sending message:", error);
-          const errorMessage = document.createElement("div");
-          errorMessage.className = "message assistant-message";
-          errorMessage.innerHTML = `<strong>Error:</strong> ${
-            error.message || "Failed to send message. Please try again."
-          }`;
-          elements.messagesContainer.appendChild(errorMessage);
+
+          // Check if this is a tool-related OpenAI error
+          if (
+            error.message &&
+            error.message.includes("tool_call") &&
+            state.selectedApiType === "openai"
+          ) {
+            // We've hit an OpenAI tool call error that we can't fix - reset state to prevent loops
+            state.isWaitingForToolResult = false;
+
+            const errorMessage = document.createElement("div");
+            errorMessage.className = "message assistant-message";
+            errorMessage.innerHTML = `<strong>Error with OpenAI tools:</strong> ${error.message}`;
+            elements.messagesContainer.appendChild(errorMessage);
+
+            // Clean up any pending tool-related messages to prevent loops
+            state.messages = state.messages.filter((msg) => {
+              // Keep all user messages and simple assistant messages
+              if (msg.role === "user") return true;
+              if (
+                msg.role === "assistant" &&
+                !msg.tool_calls &&
+                !msg.function_call
+              )
+                return true;
+
+              // Filter out problematic tool messages
+              if (
+                msg.role === "tool" ||
+                msg.role === "function" ||
+                (msg.role === "assistant" &&
+                  (msg.tool_calls || msg.function_call))
+              ) {
+                return false;
+              }
+
+              return true;
+            });
+          } else {
+            const errorMessage = document.createElement("div");
+            errorMessage.className = "message assistant-message";
+            errorMessage.innerHTML = `<strong>Error:</strong> ${
+              error.message || "Failed to send message. Please try again."
+            }`;
+            elements.messagesContainer.appendChild(errorMessage);
+          }
         } finally {
           // Remove thinking indicator
           removeThinkingIndicator(thinkingIndicator);
+
+          // Make sure we clean up stream state regardless of what happened
+          if (state.activeStreamController) {
+            state.activeStreamController.abort();
+            state.activeStreamController = null;
+          }
 
           // Re-enable send button
           elements.sendButton.disabled = false;
@@ -919,27 +1218,60 @@
 
       // Send message to Anthropic API
       async function sendToAnthropicAPI(prompt) {
-        const endpoint = "https://api.anthropic.com/v1/messages";
-        const headers = {
+        const models = getAvailableModels();
+        const modelConfig = models.find(
+          (model) => model.modelId === state.selectedModel
+        );
+
+        if (!modelConfig) {
+          console.error("Selected model not found");
+          return;
+        }
+
+        let endpoint = modelConfig.endpoint;
+        let headers = {
           "Content-Type": "application/json",
-          "X-API-Key": state.apiKey,
-          "Anthropic-Version": "2023-06-01",
-          "Anthropic-Beta": "token-efficient-tools-2025-02-19",
-          "Anthropic-Dangerous-Direct-Browser-Access": "true",
         };
 
+        // Add API key to headers based on the model type
+        switch (modelConfig.apiType) {
+          case "anthropic":
+            headers["X-API-Key"] = state.apiKeys.anthropic;
+            headers["Anthropic-Version"] = "2023-06-01";
+            headers["Anthropic-Beta"] = "token-efficient-tools-2025-02-19";
+            headers["Anthropic-Dangerous-Direct-Browser-Access"] = "true";
+            break;
+          case "openai":
+            headers["Authorization"] = `Bearer ${state.apiKeys.openai}`;
+            break;
+          case "gemini":
+            // For Gemini, the API key is added to the URL as a query parameter
+            endpoint = `${endpoint}?alt=sse&key=${state.apiKeys.gemini}`;
+            break;
+          default:
+            console.error("Unsupported API type:", modelConfig.apiType);
+            return;
+        }
+
         // Create a list of tools from all servers
-        const tools = Object.values(state.servers).flatMap(
-          (serverInfo) => serverInfo.tools || []
-        );
+        const tools = getAllTools();
 
         // If this is a new user message (not a tool result)
         if (prompt) {
           // Add the user message to history
-          state.messages.push({
-            role: "user",
-            content: [{ type: "text", text: prompt }],
-          });
+          if (modelConfig.apiType === "gemini") {
+            // Gemini has a different format for messages
+            state.messages.push({
+              role: "user",
+              parts: [{ text: prompt }],
+            });
+          } else {
+            // OpenAI and Anthropic use similar message formats
+            state.messages.push({
+              role: "user",
+              content: [{ type: "text", text: prompt }],
+            });
+          }
         }
 
         // Log the full message history for debugging
@@ -957,24 +1289,490 @@
         const controller = new AbortController();
         state.activeStreamController = controller;
 
+        // Prepare request body based on API type
+        let requestBody;
+
+        switch (modelConfig.apiType) {
+          case "anthropic":
+            // Format tools for Claude - they have a specific format requirement than OpenAI
+            const claudeTools = tools.map((tool) => {
+              // Start with basic tool structure
+              const claudeTool = {
+                name: tool.name,
+                description: tool.description || "",
+                input_schema: {
+                  type: "object",
+                  properties: {},
+                  required: [],
+                },
+              };
+              if (tool.parameters) {
+                // Extract the basic fields we need
+                const { type, properties, required } = tool.parameters;
+
+                claudeTool.input_schema = {
+                  type: type || "object",
+                  properties: {},
+                  required: Array.isArray(required) ? required : [],
+                };
+
+                // Process properties if they exist
+                if (properties && typeof properties === "object") {
+                  const validProperties = {};
+
+                  Object.entries(properties).forEach(([propName, propDef]) => {
+                    if (typeof propDef === "object") {
+                      validProperties[propName] = {
+                        type: propDef.type || "string",
+                      };
+
+                      if (propDef.description) {
+                        validProperties[propName].description =
+                          propDef.description;
+                      }
+
+                      if (propDef.enum && Array.isArray(propDef.enum)) {
+                        validProperties[propName].enum = propDef.enum;
+                      }
+                    }
+                  });
+
+                  claudeTool.input_schema.properties = validProperties;
+                }
+              }
+
+              return claudeTool;
+            });
+
+            // Log tools for debugging
+            console.log(
+              "Claude tools being sent:",
+              JSON.stringify(claudeTools, null, 2)
+            );
+
+            requestBody = JSON.stringify({
+              model: modelConfig.modelId,
+              messages: state.messages,
+              tools: claudeTools,
+              max_tokens: 4096,
+              stream: true,
+            });
+            break;
+          case "openai":
+            // Convert messages to OpenAI format if needed
+            const openaiMessages = [];
+            // Track tool calls that need responses
+            const pendingToolCalls = new Map();
+            // Track tool call IDs we've already seen
+            const processedToolCallIds = new Set();
+
+            // First, extract and normalize function_call-style assistants to tool_calls format
+            for (let i = state.messages.length - 1; i >= 0; i--) {
+              const msg = state.messages[i];
+              if (
+                msg.role === "assistant" &&
+                msg.function_call &&
+                !msg.tool_calls
+              ) {
+                // Convert old function_call to tool_calls format
+                const toolCallId = `call_${Date.now()}_${Math.floor(
+                  Math.random() * 10000
+                )}`;
+                state.messages[i] = {
+                  role: "assistant",
+                  content: msg.content,
+                  tool_calls: [
+                    {
+                      id: toolCallId,
+                      type: "function",
+                      function: {
+                        name: msg.function_call.name,
+                        arguments: msg.function_call.arguments || "{}",
+                      },
+                    },
+                  ],
+                };
+              }
+            }
+
+            // Find response messages for tool calls and ensure proper pairing
+            const toolCallResponses = new Map();
+            for (let i = 0; i < state.messages.length; i++) {
+              const msg = state.messages[i];
+              if (msg.role === "tool" && msg.tool_call_id) {
+                toolCallResponses.set(msg.tool_call_id, msg);
+              } else if (
+                msg.role === "user" &&
+                msg.content &&
+                msg.content[0]?.type === "tool_result"
+              ) {
+                if (msg.content[0].tool_use_id) {
+                  toolCallResponses.set(msg.content[0].tool_use_id, {
+                    role: "tool",
+                    tool_call_id: msg.content[0].tool_use_id,
+                    name: msg.content[0].name || "tool_result",
+                    content: msg.content[0].content,
+                  });
+                }
+              }
+            }
+
+            // Process the messages in order
+            for (let i = 0; i < state.messages.length; i++) {
+              const msg = state.messages[i];
+
+              // Handle user messages
+              if (msg.role === "user") {
+                if (Array.isArray(msg.content)) {
+                  openaiMessages.push({
+                    role: "user",
+                    content: msg.content.map((c) => c.text).join("\n"),
+                  });
+                } else if (typeof msg.content === "string") {
+                  openaiMessages.push(msg);
+                } else if (
+                  msg.content &&
+                  msg.content[0]?.type === "tool_result"
+                ) {
+                  // Skip tool results in user messages, as we'll handle them separately
+                  continue;
+                } else {
+                  // Other user message formats
+                  openaiMessages.push({
+                    role: "user",
+                    content:
+                      typeof msg.content === "string"
+                        ? msg.content
+                        : JSON.stringify(msg.content || ""),
+                  });
+                }
+              }
+              // Handle assistant messages
+              else if (msg.role === "assistant") {
+                if (msg.tool_calls) {
+                  // Add the assistant message with tool calls
+                  openaiMessages.push({
+                    role: "assistant",
+                    content: msg.content,
+                    tool_calls: msg.tool_calls,
+                  });
+
+                  // Now add responses for each tool call
+                  for (const toolCall of msg.tool_calls) {
+                    if (processedToolCallIds.has(toolCall.id)) {
+                      // Skip if we've already processed this tool call
+                      continue;
+                    }
+
+                    processedToolCallIds.add(toolCall.id);
+
+                    // Check if we have a response for this tool call
+                    if (toolCallResponses.has(toolCall.id)) {
+                      openaiMessages.push(toolCallResponses.get(toolCall.id));
+                    } else {
+                      // Create a placeholder response
+                      console.log(
+                        `Adding placeholder response for tool call: ${toolCall.id}`
+                      );
+                      openaiMessages.push({
+                        role: "tool",
+                        tool_call_id: toolCall.id,
+                        name: toolCall.function?.name || "unknown_tool",
+                        content: JSON.stringify({ result: "No response yet" }),
+                      });
+                    }
+                  }
+                }
+                // Handle assistant with content array (Anthropic format)
+                else if (Array.isArray(msg.content)) {
+                  // Check if this message has tool_use items
+                  const toolUses = msg.content.filter(
+                    (item) => item.type === "tool_use"
+                  );
+                  const textContent =
+                    msg.content.find((item) => item.type === "text")?.text ||
+                    "";
+
+                  if (toolUses.length > 0) {
+                    // Message has tool calls - format for OpenAI
+                    const toolCalls = toolUses.map((tool) => ({
+                      id: tool.id,
+                      type: "function",
+                      function: {
+                        name: tool.name,
+                        arguments: JSON.stringify(tool.input),
+                      },
+                    }));
+
+                    const assistantMsg = {
+                      role: "assistant",
+                      content: textContent,
+                      tool_calls: toolCalls,
+                    };
+                    openaiMessages.push(assistantMsg);
+
+                    // Add responses for each tool call
+                    for (const toolCall of toolCalls) {
+                      if (processedToolCallIds.has(toolCall.id)) {
+                        // Skip if we've already processed this tool call
+                        continue;
+                      }
+
+                      processedToolCallIds.add(toolCall.id);
+
+                      // Check if we have a response for this tool call
+                      if (toolCallResponses.has(toolCall.id)) {
+                        openaiMessages.push(toolCallResponses.get(toolCall.id));
+                      } else {
+                        // Create a placeholder response
+                        console.log(
+                          `Adding placeholder response for tool call: ${toolCall.id}`
+                        );
+                        openaiMessages.push({
+                          role: "tool",
+                          tool_call_id: toolCall.id,
+                          name: toolCall.function?.name || "unknown_tool",
+                          content: JSON.stringify({
+                            result: "No response yet",
+                          }),
+                        });
+                      }
+                    }
+                  } else {
+                    // Just a text message
+                    openaiMessages.push({
+                      role: "assistant",
+                      content: textContent,
+                    });
+                  }
+                }
+                // Simple assistant messages
+                else if (typeof msg.content === "string") {
+                  openaiMessages.push({
+                    role: "assistant",
+                    content: msg.content,
+                  });
+                }
+                // If there's no content, add empty content
+                else if (msg.content === null || msg.content === undefined) {
+                  openaiMessages.push({
+                    role: "assistant",
+                    content: "",
+                  });
+                }
+              }
+              // Skip tool and function messages, as we handle them with the assistant messages
+              else if (msg.role === "tool" || msg.role === "function") {
+                continue;
+              }
+              // System messages
+              else if (msg.role === "system") {
+                openaiMessages.push(msg);
+              }
+            }
+
+            // Clean up: Ensure messages are in proper sequence and no duplicates
+            const cleanedMessages = [];
+            const seenToolCallIds = new Set();
+
+            for (let i = 0; i < openaiMessages.length; i++) {
+              const msg = openaiMessages[i];
+
+              // Skip duplicate tool responses
+              if (msg.role === "tool" && msg.tool_call_id) {
+                if (seenToolCallIds.has(msg.tool_call_id)) {
+                  continue;
+                }
+                seenToolCallIds.add(msg.tool_call_id);
+              }
+
+              cleanedMessages.push(msg);
+            }
+
+            // For debugging
+            console.log(
+              "OpenAI formatted messages:",
+              JSON.stringify(cleanedMessages, null, 2)
+            );
+
+            // Ensure tools have proper parameters schema for OpenAI
+            const openaiTools = tools.map((tool) => {
+              // Create a proper OpenAI function definition with parameters schema
+              const functionDef = {
+                type: "function",
+                function: {
+                  name: tool.name,
+                  description: tool.description || "",
+                },
+              };
+
+              // Add parameters schema if available
+              if (tool.parameters) {
+                // OpenAI expects parameters in JSON Schema format
+                functionDef.function.parameters = tool.parameters;
+              } else {
+                // Create a minimal schema if none provided
+                functionDef.function.parameters = {
+                  type: "object",
+                  properties: {},
+                  required: [],
+                };
+              }
+
+              return functionDef;
+            });
+
+            // For debugging, log the tools that are being sent
+            console.log(
+              "OpenAI tools being sent:",
+              JSON.stringify(openaiTools, null, 2)
+            );
+
+            requestBody = JSON.stringify({
+              model: modelConfig.modelId,
+              messages: cleanedMessages,
+              tools: openaiTools,
+              stream: true,
+            });
+            break;
+          case "gemini":
+            // Convert messages to Gemini format
+            const geminiContents = [];
+
+            for (const msg of state.messages) {
+              if (msg.role === "user") {
+                if (Array.isArray(msg.content)) {
+                  // Convert Anthropic format to Gemini format
+                  geminiContents.push({
+                    role: "user",
+                    parts: [
+                      { text: msg.content.map((c) => c.text).join("\n") },
+                    ],
+                  });
+                } else if (msg.parts) {
+                  // Already in Gemini format
+                  geminiContents.push(msg);
+                } else {
+                  // Simple content
+                  geminiContents.push({
+                    role: "user",
+                    parts: [{ text: msg.content || "" }],
+                  });
+                }
+              } else if (msg.role === "assistant" || msg.role === "model") {
+                if (Array.isArray(msg.content)) {
+                  // Convert Anthropic format to Gemini format
+                  geminiContents.push({
+                    role: "model",
+                    parts: [
+                      {
+                        text:
+                          msg.content.find((c) => c.type === "text")?.text ||
+                          "",
+                      },
+                    ],
+                  });
+                } else if (msg.parts) {
+                  // Already in Gemini format
+                  geminiContents.push(msg);
+                } else {
+                  // Simple content
+                  geminiContents.push({
+                    role: "model",
+                    parts: [{ text: msg.content || "" }],
+                  });
+                }
+              } else if (msg.role === "function") {
+                // Function response
+                geminiContents.push({
+                  role: "function",
+                  parts: [
+                    {
+                      functionResponse: {
+                        name: msg.name,
+                        response: msg.content,
+                      },
+                    },
+                  ],
+                });
+              }
+            }
+
+            // Format tools for Gemini
+            const geminiTools = [];
+            if (tools && tools.length > 0) {
+              // Create functionDeclarations format
+              const functionDeclarations = tools.map((tool) => {
+                // Create proper parameters format
+                return {
+                  name: tool.name,
+                  description: tool.description || "",
+                  parameters: tool.input_schema,
+                };
+              });
+
+              // Add the tools in the format Gemini expects
+              geminiTools.push({
+                functionDeclarations: functionDeclarations,
+              });
+            }
+
+            // For debugging
+            console.log(
+              "Gemini request format:",
+              JSON.stringify(
+                {
+                  contents: geminiContents,
+                  tools: geminiTools,
+                  generationConfig: {
+                    responseMimeType: "text/plain",
+                    maxOutputTokens: 4096,
+                  },
+                },
+                null,
+                2
+              )
+            );
+
+            requestBody = JSON.stringify({
+              contents: geminiContents,
+              tools: geminiTools,
+              generationConfig: {
+                responseMimeType: "text/plain",
+                maxOutputTokens: 4096,
+              },
+            });
+            break;
+          default:
+            console.error("Unsupported API type for request body");
+            return;
+        }
+
         const response = await fetch(endpoint, {
           method: "POST",
           headers: headers,
-          body: JSON.stringify({
-            model: "claude-3-7-sonnet-20250219",
-            messages: state.messages,
-            tools: tools,
-            max_tokens: 4096,
-            stream: true,
-          }),
+          body: requestBody,
           signal: controller.signal,
         });
 
         if (!response.ok) {
           const error = await response.json();
-          throw new Error(
-            error.error?.message || `API returned status ${response.status}`
-          );
+
+          if (modelConfig.apiType === "gemini") {
+            console.error("Gemini API error:", error);
+            let errorMessage = "Unknown Gemini API error";
+
+            if (error.error) {
+              errorMessage =
+                error.error.message || error.error.status || "API error";
+            }
+
+            throw new Error(`Gemini API Error: ${errorMessage}`);
+          } else {
+            throw new Error(
+              error.error?.message || `API returned status ${response.status}`
+            );
+          }
         }
 
         // Create a container for the assistant message
@@ -986,137 +1784,587 @@
         // Keep track of whether we've added an assistant message to the history
         let addedAssistantMessage = false;
 
-        // Process the stream
-        for await (const event of parseEventStream(response.body)) {
-          if (event.event === "ping") continue;
+        // Process the stream based on API type
+        if (modelConfig.apiType === "anthropic") {
+          // Process the Anthropic stream
+          for await (const event of parseEventStream(response.body)) {
+            if (event.event === "ping") continue;
 
-          if (!event.data) continue;
+            if (!event.data) continue;
 
-          const data = JSON.parse(event.data);
+            const data = JSON.parse(event.data);
 
-          if (data.type === "message_start") {
-            state.currentAssistantMessage = data.message;
-            state.messageIdCounter++;
-            assistantMessageContent = [];
-            addedAssistantMessage = false;
-          } else if (data.type === "content_block_start") {
-            const contentBlock = data.content_block;
+            if (data.type === "message_start") {
+              state.currentAssistantMessage = data.message;
+              state.messageIdCounter++;
+              assistantMessageContent = [];
+              addedAssistantMessage = false;
+            } else if (data.type === "content_block_start") {
+              const contentBlock = data.content_block;
 
-            if (contentBlock.type === "text") {
-              currentTextContent = contentBlock.text || "";
-              assistantContainer = addMessageToUI(
-                "assistant",
-                currentTextContent
-              );
+              if (contentBlock.type === "text") {
+                currentTextContent = contentBlock.text || "";
+                assistantContainer = addMessageToUI(
+                  "assistant",
+                  currentTextContent
+                );
 
-              // Add to assistant message content array
+                // Add to assistant message content array
+                if (
+                  !assistantMessageContent.some((item) => item.type === "text")
+                ) {
+                  assistantMessageContent.push({
+                    type: "text",
+                    text: currentTextContent,
+                  });
+                }
+              } else if (contentBlock.type === "tool_use") {
+                currentToolUse = {
+                  id: contentBlock.id,
+                  name: contentBlock.name,
+                  input: {},
+                };
+
+                // If this is the first content, create a container
+                if (!assistantContainer) {
+                  assistantContainer = addMessageToUI("assistant", "");
+                }
+              }
+            } else if (data.type === "content_block_delta") {
+              if (data.delta.type === "text_delta") {
+                currentTextContent += data.delta.text;
+                // Replace with updateStreamingContent to ensure thinking indicator is at bottom
+                thinkingIndicator = updateStreamingContent(
+                  "assistant",
+                  currentTextContent
+                );
+
+                // Update the text in the content array
+                const textItem = assistantMessageContent.find(
+                  (item) => item.type === "text"
+                );
+                if (textItem) {
+                  textItem.text = currentTextContent;
+                }
+              } else if (data.delta.type === "input_json_delta") {
+                if (currentToolUse) {
+                  currentJsonContent += data.delta.partial_json || "";
+                }
+              }
+            } else if (data.type === "content_block_stop") {
+              if (currentToolUse) {
+                try {
+                  const parsedJson = JSON.parse(currentJsonContent);
+                  currentToolUse.input = parsedJson;
+                } catch (e) {
+                  // Ignore parsing errors for partial JSON
+                  console.error("Error processing tool use delta:", e);
+                }
+
+                // Add the tool call to the UI
+                console.log("Adding tool call to UI", currentToolUse);
+                addToolCallToUI(
+                  currentToolUse.name,
+                  currentToolUse.input,
+                  assistantContainer
+                );
+
+                // Add the tool use to the message content array
+                assistantMessageContent.push({
+                  type: "tool_use",
+                  id: currentToolUse.id,
+                  name: currentToolUse.name,
+                  input: currentToolUse.input,
+                });
+
+                // Handle the tool call
+                handleToolCall(currentToolUse, assistantContainer);
+
+                currentToolUse = null;
+                currentJsonContent = "";
+              }
+            } else if (data.type === "message_delta") {
+              if (data.delta.stop_reason === "tool_use") {
+                state.isWaitingForToolResult = true;
+
+                // Only add the message if we haven't already and it has tool_use
+                if (
+                  !addedAssistantMessage &&
+                  assistantMessageContent.some(
+                    (item) => item.type === "tool_use"
+                  )
+                ) {
+                  // We'll let handleToolCall manage adding this to avoid duplication
+                  addedAssistantMessage = true;
+                }
+              }
+            } else if (data.type === "message_stop") {
+              // Message completed
+              // If not waiting for tool result and has content but not yet added to history
               if (
+                !state.isWaitingForToolResult &&
+                assistantMessageContent.length > 0 &&
+                !addedAssistantMessage
+              ) {
+                state.messages.push({
+                  role: "assistant",
+                  content: assistantMessageContent,
+                });
+                console.log(
+                  "Added final assistant message to history:",
+                  JSON.stringify(assistantMessageContent, null, 2)
+                );
+                addedAssistantMessage = true;
+              }
+
+              // Clean up the stream and remove thinking indicators
+              await processStreamEnd();
+            }
+          }
+        } else if (modelConfig.apiType === "openai") {
+          // Process the OpenAI stream
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder("utf-8");
+
+          let buffer = "";
+          let assistantResponse = "";
+          let toolCallId = null;
+          let toolName = null;
+          let toolArguments = "";
+          let isCollectingToolCall = false;
+
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+
+              if (done) {
+                break;
+              }
+
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split("\n");
+
+              // Process all complete lines
+              buffer = lines.pop() || "";
+
+              for (const line of lines) {
+                if (line.trim() === "") continue;
+                if (line.trim() === "data: [DONE]") continue;
+
+                try {
+                  // Extract the JSON part
+                  const jsonStr = line.replace(/^data: /, "").trim();
+                  if (!jsonStr) continue;
+
+                  const json = JSON.parse(jsonStr);
+
+                  // Check for errors in the stream
+                  if (json.error) {
+                    console.error("OpenAI API error:", json.error);
+                    if (!assistantContainer) {
+                      assistantContainer = addMessageToUI(
+                        "assistant",
+                        `Error from API: ${
+                          json.error.message || "Unknown error"
+                        }`
+                      );
+                    }
+                    continue;
+                  }
+
+                  if (json.choices && json.choices[0]?.delta?.content) {
+                    // Regular text content
+                    const content = json.choices[0].delta.content;
+                    assistantResponse += content;
+
+                    // Create container if it doesn't exist
+                    if (!assistantContainer) {
+                      assistantContainer = addMessageToUI(
+                        "assistant",
+                        assistantResponse
+                      );
+                    } else {
+                      // Update existing container
+                      updateStreamingContent("assistant", assistantResponse);
+                    }
+
+                    // Add to content array for history
+                    if (
+                      !assistantMessageContent.some(
+                        (item) => item.type === "text"
+                      )
+                    ) {
+                      assistantMessageContent.push({
+                        type: "text",
+                        text: assistantResponse,
+                      });
+                    } else {
+                      // Update existing content
+                      const textItem = assistantMessageContent.find(
+                        (item) => item.type === "text"
+                      );
+                      if (textItem) {
+                        textItem.text = assistantResponse;
+                      }
+                    }
+                  } else if (
+                    json.choices &&
+                    json.choices[0]?.delta?.tool_calls
+                  ) {
+                    // Handle tool calls (new OpenAI format)
+                    const toolCalls = json.choices[0].delta.tool_calls;
+
+                    for (const toolCall of toolCalls) {
+                      if (toolCall.index === 0 && toolCall.id) {
+                        // Start of a new tool call
+                        toolCallId = toolCall.id;
+                        isCollectingToolCall = true;
+                      }
+
+                      if (toolCall.function) {
+                        if (toolCall.function.name) {
+                          toolName = toolCall.function.name;
+                        }
+
+                        if (toolCall.function.arguments) {
+                          toolArguments += toolCall.function.arguments;
+                        }
+                      }
+                    }
+                  } else if (
+                    json.choices &&
+                    json.choices[0]?.finish_reason === "tool_calls" &&
+                    isCollectingToolCall
+                  ) {
+                    // End of the tool call collection
+                    isCollectingToolCall = false;
+
+                    // Create the tool use object
+                    try {
+                      const parsedArguments = JSON.parse(toolArguments);
+                      currentToolUse = {
+                        id: toolCallId,
+                        name: toolName,
+                        input: parsedArguments,
+                      };
+
+                      // If this is the first content, create a container
+                      if (!assistantContainer) {
+                        assistantContainer = addMessageToUI("assistant", "");
+                      }
+
+                      // Add the tool call to UI
+                      addToolCallToUI(
+                        currentToolUse.name,
+                        currentToolUse.input,
+                        assistantContainer
+                      );
+
+                      // Add to message content
+                      assistantMessageContent.push({
+                        type: "tool_use",
+                        id: currentToolUse.id,
+                        name: currentToolUse.name,
+                        input: currentToolUse.input,
+                      });
+
+                      // Handle the tool call
+                      handleToolCall(currentToolUse, assistantContainer);
+
+                      state.isWaitingForToolResult = true;
+
+                      // Reset for next potential tool call
+                      toolCallId = null;
+                      toolName = null;
+                      toolArguments = "";
+                    } catch (e) {
+                      console.error(
+                        "Error parsing tool arguments:",
+                        e,
+                        toolArguments
+                      );
+                    }
+                  }
+                } catch (e) {
+                  console.error("Error processing OpenAI stream:", e, line);
+                }
+              }
+            }
+
+            // Add final assistant message to history if there's content
+            if (
+              !state.isWaitingForToolResult &&
+              (assistantResponse || assistantMessageContent.length > 0) &&
+              !addedAssistantMessage
+            ) {
+              if (
+                assistantResponse &&
                 !assistantMessageContent.some((item) => item.type === "text")
               ) {
                 assistantMessageContent.push({
                   type: "text",
-                  text: currentTextContent,
+                  text: assistantResponse,
                 });
               }
-            } else if (contentBlock.type === "tool_use") {
-              currentToolUse = {
-                id: contentBlock.id,
-                name: contentBlock.name,
-                input: {},
-              };
 
-              // If this is the first content, create a container
-              if (!assistantContainer) {
-                assistantContainer = addMessageToUI("assistant", "");
-              }
-            }
-          } else if (data.type === "content_block_delta") {
-            if (data.delta.type === "text_delta") {
-              currentTextContent += data.delta.text;
-              // Replace with updateStreamingContent to ensure thinking indicator is at bottom
-              thinkingIndicator = updateStreamingContent(
-                "assistant",
-                currentTextContent
-              );
-
-              // Update the text in the content array
-              const textItem = assistantMessageContent.find(
-                (item) => item.type === "text"
-              );
-              if (textItem) {
-                textItem.text = currentTextContent;
-              }
-            } else if (data.delta.type === "input_json_delta") {
-              if (currentToolUse) {
-                currentJsonContent += data.delta.partial_json || "";
-              }
-            }
-          } else if (data.type === "content_block_stop") {
-            if (currentToolUse) {
-              try {
-                const parsedJson = JSON.parse(currentJsonContent);
-                currentToolUse.input = parsedJson;
-              } catch (e) {
-                // Ignore parsing errors for partial JSON
-                console.error("Error processing tool use delta:", e);
-              }
-
-              // Add the tool call to the UI
-              console.log("Adding tool call to UI", currentToolUse);
-              addToolCallToUI(
-                currentToolUse.name,
-                currentToolUse.input,
-                assistantContainer
-              );
-
-              // Add the tool use to the message content array
-              assistantMessageContent.push({
-                type: "tool_use",
-                id: currentToolUse.id,
-                name: currentToolUse.name,
-                input: currentToolUse.input,
+              state.messages.push({
+                role: "assistant",
+                content: assistantMessageContent,
               });
 
-              // Handle the tool call
-              handleToolCall(currentToolUse, assistantContainer);
-
-              currentToolUse = null;
-              currentJsonContent = "";
+              addedAssistantMessage = true;
             }
-          } else if (data.type === "message_delta") {
-            if (data.delta.stop_reason === "tool_use") {
-              state.isWaitingForToolResult = true;
 
-              // Only add the message if we haven't already and it has tool_use
-              if (
-                !addedAssistantMessage &&
-                assistantMessageContent.some((item) => item.type === "tool_use")
-              ) {
-                // We'll let handleToolCall manage adding this to avoid duplication
-                addedAssistantMessage = true;
+            // Clean up the stream and remove thinking indicators
+            await processStreamEnd();
+          } catch (error) {
+            console.error("Error reading OpenAI stream:", error);
+            await processStreamEnd();
+          } finally {
+            // Ensure we always clean up properly
+            await processStreamEnd();
+          }
+        } else if (modelConfig.apiType === "gemini") {
+          // Process the Gemini streaming response
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder("utf-8");
+
+          let buffer = "";
+          let assistantResponse = "";
+          let collectingFunctionCall = false;
+          let functionCallName = "";
+          let functionCallArgs = {};
+          let handledChunks = 0;
+
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+
+              if (done) {
+                break;
+              }
+
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split("\n");
+
+              // Process all complete lines
+              buffer = lines.pop() || "";
+
+              for (const line of lines) {
+                if (line.trim() === "") continue;
+                if (line.trim() === "data: [DONE]") continue;
+
+                // Extract the JSON data
+                try {
+                  // Gemini streaming format starts with "data: "
+                  if (line.startsWith("data: ")) {
+                    handledChunks++;
+                    const jsonStr = line.substring(6).trim();
+                    if (!jsonStr) continue;
+
+                    const data = JSON.parse(jsonStr);
+
+                    // Handle prompt feedback (errors/blocked content)
+                    if (
+                      data.promptFeedback &&
+                      data.promptFeedback.blockReason
+                    ) {
+                      console.error(
+                        "Content blocked by Gemini API:",
+                        data.promptFeedback.blockReason
+                      );
+                      if (!assistantContainer) {
+                        assistantContainer = addMessageToUI(
+                          "assistant",
+                          `Error: Content blocked by API: ${data.promptFeedback.blockReason}`
+                        );
+                      }
+                      break;
+                    }
+
+                    // Handle chunks
+                    if (data.candidates && data.candidates.length > 0) {
+                      const candidate = data.candidates[0];
+
+                      // Handle finish reason if present
+                      if (candidate.finishReason === "STOP") {
+                        console.log("Gemini stream completed normally");
+                      } else if (candidate.finishReason === "SAFETY") {
+                        console.warn(
+                          "Gemini stream stopped for safety reasons"
+                        );
+                        if (!assistantContainer) {
+                          assistantContainer = addMessageToUI(
+                            "assistant",
+                            "Response was filtered due to safety concerns."
+                          );
+                        }
+                      }
+
+                      // Process text content and function calls
+                      if (candidate.content && candidate.content.parts) {
+                        for (const part of candidate.content.parts) {
+                          // Handle text parts
+                          if (part.text) {
+                            assistantResponse += part.text;
+
+                            // Create or update message container
+                            if (!assistantContainer) {
+                              assistantContainer = addMessageToUI(
+                                "assistant",
+                                assistantResponse
+                              );
+                            } else {
+                              updateStreamingContent(
+                                "assistant",
+                                assistantResponse
+                              );
+                            }
+
+                            // Add to message content
+                            if (
+                              !assistantMessageContent.some(
+                                (item) => item.type === "text"
+                              )
+                            ) {
+                              assistantMessageContent.push({
+                                type: "text",
+                                text: assistantResponse,
+                              });
+                            } else {
+                              const textItem = assistantMessageContent.find(
+                                (item) => item.type === "text"
+                              );
+                              if (textItem) {
+                                textItem.text = assistantResponse;
+                              }
+                            }
+                          }
+                          // Handle function call parts
+                          else if (part.functionCall) {
+                            collectingFunctionCall = true;
+                            functionCallName = part.functionCall.name;
+                            functionCallArgs = part.functionCall.args || {};
+
+                            console.log(
+                              "Gemini function call detected:",
+                              functionCallName,
+                              JSON.stringify(functionCallArgs, null, 2)
+                            );
+
+                            // Create the tool use object
+                            currentToolUse = {
+                              id: `gemini-${Date.now()}-${handledChunks}`,
+                              name: functionCallName,
+                              input: functionCallArgs,
+                            };
+
+                            // If this is the first content, create a container
+                            if (!assistantContainer) {
+                              assistantContainer = addMessageToUI(
+                                "assistant",
+                                ""
+                              );
+                            }
+
+                            // Add the tool call to UI
+                            addToolCallToUI(
+                              currentToolUse.name,
+                              currentToolUse.input,
+                              assistantContainer
+                            );
+
+                            // Add to Gemini-specific message format
+                            if (modelConfig.apiType === "gemini") {
+                              // For Gemini, we need to properly format the message history
+                              state.messages.push({
+                                role: "model",
+                                parts: [
+                                  {
+                                    functionCall: {
+                                      name: functionCallName,
+                                      args: functionCallArgs,
+                                    },
+                                  },
+                                ],
+                              });
+                            } else {
+                              // Add to generic message content array
+                              assistantMessageContent.push({
+                                type: "tool_use",
+                                id: currentToolUse.id,
+                                name: currentToolUse.name,
+                                input: currentToolUse.input,
+                              });
+                            }
+
+                            // Handle the tool call
+                            handleToolCall(currentToolUse, assistantContainer);
+
+                            state.isWaitingForToolResult = true;
+
+                            // Reset for next potential tool call
+                            collectingFunctionCall = false;
+                            functionCallName = "";
+                            functionCallArgs = {};
+                          }
+                        }
+                      }
+                    }
+                  } else {
+                    console.warn("Unexpected Gemini stream format:", line);
+                  }
+                } catch (e) {
+                  console.error("Error processing Gemini stream:", e, line);
+                }
               }
             }
-          } else if (data.type === "message_stop") {
-            // Message completed
-            // If not waiting for tool result and has content but not yet added to history
+
+            // Add final message to history if not waiting for tool result
             if (
               !state.isWaitingForToolResult &&
               assistantMessageContent.length > 0 &&
               !addedAssistantMessage
             ) {
-              state.messages.push({
-                role: "assistant",
-                content: assistantMessageContent,
-              });
-              console.log(
-                "Added final assistant message to history:",
-                JSON.stringify(assistantMessageContent, null, 2)
-              );
+              if (modelConfig.apiType === "gemini") {
+                // Format for Gemini history
+                const parts = [];
+                for (const item of assistantMessageContent) {
+                  if (item.type === "text") {
+                    parts.push({ text: item.text });
+                  } else if (item.type === "tool_use") {
+                    parts.push({
+                      functionCall: {
+                        name: item.name,
+                        args: item.input,
+                      },
+                    });
+                  }
+                }
+
+                state.messages.push({
+                  role: "model",
+                  parts: parts,
+                });
+              } else {
+                // Standard format
+                state.messages.push({
+                  role: "assistant",
+                  content: assistantMessageContent,
+                });
+              }
+
               addedAssistantMessage = true;
             }
 
-            state.currentAssistantMessage = null;
-            state.activeStreamController = null;
+            // Clean up the stream and remove thinking indicators
+            await processStreamEnd();
+          } catch (error) {
+            console.error("Error processing Gemini stream:", error);
+            await processStreamEnd();
+          } finally {
+            // Ensure we always clean up properly
+            await processStreamEnd();
           }
         }
       }
@@ -1156,51 +2404,114 @@
         }
 
         try {
+          // Check if we've had recent OpenAI tool errors - if so, avoid tool calls
+          const recentErrorFound = state.messages.some(
+            (msg) =>
+              msg.role === "tool" &&
+              msg.content &&
+              typeof msg.content === "string" &&
+              msg.content.includes("tool_call") &&
+              msg.content.includes("error")
+          );
+
+          if (recentErrorFound && state.selectedApiType === "openai") {
+            throw new Error(
+              "Skipping tool call due to recent OpenAI tool errors"
+            );
+          }
+
           // IMPORTANT: We have to make sure the last message is the assistant message with the tool_use
           // Check if the message already exists in history
           const lastMessage = state.messages[state.messages.length - 1];
-          const toolUseExists =
-            lastMessage &&
-            lastMessage.role === "assistant" &&
-            lastMessage.content.some(
-              (item) => item.type === "tool_use" && item.id === id
-            );
 
-          if (!toolUseExists) {
-            // Find any previous assistant message with this tool
-            const assistantMessageIndex = state.messages.findIndex(
-              (msg) =>
-                msg.role === "assistant" &&
-                msg.content.some(
-                  (item) => item.type === "tool_use" && item.id === id
-                )
-            );
+          // Different handling based on API type
+          const models = getAvailableModels();
+          const modelConfig = models.find(
+            (model) => model.modelId === state.selectedModel
+          );
+          const apiType = modelConfig ? modelConfig.apiType : "anthropic"; // Default to anthropic if not found
 
-            // If there's a previous one with this tool, remove it to avoid duplicates
-            if (assistantMessageIndex !== -1) {
-              state.messages.splice(assistantMessageIndex, 1);
+          let toolUseExists = false;
+
+          if (apiType === "anthropic") {
+            toolUseExists =
+              lastMessage &&
+              lastMessage.role === "assistant" &&
+              lastMessage.content &&
+              lastMessage.content.some(
+                (item) => item.type === "tool_use" && item.id === id
+              );
+
+            if (!toolUseExists) {
+              // Find any previous assistant message with this tool
+              const assistantMessageIndex = state.messages.findIndex(
+                (msg) =>
+                  msg.role === "assistant" &&
+                  msg.content &&
+                  msg.content.some(
+                    (item) => item.type === "tool_use" && item.id === id
+                  )
+              );
+
+              // If there's a previous one with this tool, remove it to avoid duplicates
+              if (assistantMessageIndex !== -1) {
+                state.messages.splice(assistantMessageIndex, 1);
+              }
+
+              // Add the assistant message with tool_use to history
+              state.messages.push({
+                role: "assistant",
+                content: [
+                  {
+                    type: "tool_use",
+                    id: id,
+                    name: name,
+                    input: input,
+                  },
+                ],
+              });
             }
+          } else if (apiType === "openai") {
+            toolUseExists =
+              lastMessage &&
+              lastMessage.role === "assistant" &&
+              lastMessage.function_call;
 
-            // Add the assistant message with tool_use to history
-            state.messages.push({
-              role: "assistant",
-              content: [
-                {
-                  type: "tool_use",
-                  id: id,
+            if (!toolUseExists) {
+              // Add appropriate OpenAI format message
+              state.messages.push({
+                role: "assistant",
+                content: null,
+                function_call: {
                   name: name,
-                  input: input,
+                  arguments: JSON.stringify(input),
                 },
-              ],
-            });
+              });
+            }
+          } else if (apiType === "gemini") {
+            toolUseExists =
+              lastMessage &&
+              lastMessage.role === "model" &&
+              lastMessage.parts &&
+              lastMessage.parts.some((part) => part.functionCall);
 
-            console.log(
-              "Added assistant tool use to history:",
-              id,
-              name,
-              input
-            );
+            if (!toolUseExists) {
+              // Add appropriate Gemini format message
+              state.messages.push({
+                role: "model",
+                parts: [
+                  {
+                    functionCall: {
+                      name: name,
+                      args: input,
+                    },
+                  },
+                ],
+              });
+            }
           }
+
+          console.log("Added assistant tool use to history:", id, name, input);
 
           // Call the tool using RPC
           const result = await RPC(toolServer, name, input);
@@ -1230,29 +2541,283 @@
         // Reset the waiting flag
         state.isWaitingForToolResult = false;
 
-        // Format the tool result message
-        const toolResultMessage = {
-          role: "user",
-          content: [
-            {
-              type: "tool_result",
-              tool_use_id: toolUseId,
-              content:
-                typeof result === "string" ? result : JSON.stringify(result),
-              is_error: result.is_error || false,
-            },
-          ],
-        };
+        // If the result contains an error related to OpenAI tool calls, don't try to send it again
+        if (
+          result &&
+          result.is_error &&
+          typeof result.content === "string" &&
+          result.content.includes("tool_call") &&
+          state.selectedApiType === "openai"
+        ) {
+          console.warn(
+            "Detected OpenAI tool error in result - breaking the loop"
+          );
+
+          // Display error to user
+          const errorMessage = document.createElement("div");
+          errorMessage.className = "message assistant-message";
+          errorMessage.innerHTML = `<strong>Error:</strong> ${result.content}`;
+          elements.messagesContainer.appendChild(errorMessage);
+
+          // Clean up message history to prevent loops
+          state.messages = state.messages.filter((msg) => {
+            // Keep all user messages and simple assistant messages
+            if (msg.role === "user") return true;
+            if (
+              msg.role === "assistant" &&
+              !msg.tool_calls &&
+              !msg.function_call
+            )
+              return true;
+
+            // Filter out problematic tool messages
+            if (
+              msg.role === "tool" ||
+              msg.role === "function" ||
+              (msg.role === "assistant" &&
+                (msg.tool_calls || msg.function_call))
+            ) {
+              return false;
+            }
+
+            return true;
+          });
+
+          return; // Don't continue with API call
+        }
+
+        // Get current model configuration
+        const models = getAvailableModels();
+        const modelConfig = models.find(
+          (model) => model.modelId === state.selectedModel
+        );
+        const apiType = modelConfig ? modelConfig.apiType : "anthropic"; // Default to anthropic if not found
+
+        // Format the tool result message based on API type
+        let toolResultMessage;
+
+        if (apiType === "anthropic") {
+          toolResultMessage = {
+            role: "user",
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: toolUseId,
+                content:
+                  typeof result === "string" ? result : JSON.stringify(result),
+                is_error: result.is_error || false,
+              },
+            ],
+          };
+        } else if (apiType === "openai") {
+          // Find the assistant's tool call to get the name
+          let toolName = "tool_result";
+          let foundToolCallMessage = false;
+          let toolCallMessage = null;
+
+          // Search for the tool call in messages
+          for (let i = state.messages.length - 1; i >= 0; i--) {
+            const msg = state.messages[i];
+            if (msg.role === "assistant") {
+              // Check for various formats of tool calls
+              if (Array.isArray(msg.content)) {
+                const toolUse = msg.content.find(
+                  (item) => item.type === "tool_use" && item.id === toolUseId
+                );
+                if (toolUse) {
+                  toolName = toolUse.name;
+                  // Convert to OpenAI format
+                  toolCallMessage = {
+                    role: "assistant",
+                    content: null,
+                    tool_calls: [
+                      {
+                        id: toolUseId,
+                        type: "function",
+                        function: {
+                          name: toolName,
+                          arguments: JSON.stringify(toolUse.input || {}),
+                        },
+                      },
+                    ],
+                  };
+                  foundToolCallMessage = true;
+                  break;
+                }
+              } else if (msg.tool_calls) {
+                const toolCall = msg.tool_calls.find(
+                  (tc) => tc.id === toolUseId
+                );
+                if (toolCall) {
+                  toolName = toolCall.function?.name || "tool_result";
+                  toolCallMessage = msg;
+                  foundToolCallMessage = true;
+                  break;
+                }
+              }
+            }
+          }
+
+          // If no valid tool call message found, create one with a different ID
+          // Using a random value to avoid collisions with dynamically generated IDs
+          if (!foundToolCallMessage) {
+            const newToolCallId = `call_${Date.now()}_${Math.floor(
+              Math.random() * 1000
+            )}`;
+            console.warn(
+              `Creating new tool call message with ID ${newToolCallId} for OpenAI compatibility`
+            );
+            toolCallMessage = {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: newToolCallId,
+                  type: "function",
+                  function: {
+                    name: toolName,
+                    arguments: "{}",
+                  },
+                },
+              ],
+            };
+            toolUseId = newToolCallId; // Use the new ID for the response
+          }
+
+          // Create the tool response message
+          toolResultMessage = {
+            role: "tool",
+            tool_call_id: toolUseId,
+            name: toolName,
+            content:
+              typeof result === "string" ? result : JSON.stringify(result),
+          };
+
+          // Now ensure proper ordering in the message history
+
+          // First, see if we already have these messages
+          let toolCallIndex = -1;
+          let toolResponseIndex = -1;
+
+          for (let i = 0; i < state.messages.length; i++) {
+            const msg = state.messages[i];
+            if (msg.role === "assistant" && msg.tool_calls) {
+              // Look for matching tool call
+              if (msg.tool_calls.some((tc) => tc.id === toolUseId)) {
+                toolCallIndex = i;
+              }
+            } else if (msg.role === "tool" && msg.tool_call_id === toolUseId) {
+              toolResponseIndex = i;
+            }
+          }
+
+          // If we have neither, add both
+          if (toolCallIndex === -1 && toolResponseIndex === -1) {
+            // Add both messages to history
+            state.messages.push(toolCallMessage);
+            state.messages.push(toolResultMessage);
+          }
+          // If we have the call but not the response, add the response
+          else if (toolCallIndex !== -1 && toolResponseIndex === -1) {
+            state.messages.push(toolResultMessage);
+          }
+          // If we have the response but not the call, add the call before the response
+          else if (toolCallIndex === -1 && toolResponseIndex !== -1) {
+            state.messages.splice(toolResponseIndex, 0, toolCallMessage);
+          }
+          // If we have both, update the response
+          else if (toolResponseIndex !== -1) {
+            state.messages[toolResponseIndex] = toolResultMessage;
+          }
+        } else if (apiType === "gemini") {
+          // Find the tool call to get the name
+          let toolName = "tool_result";
+
+          // Search for the tool call in messages
+          for (const msg of state.messages) {
+            if (msg.role === "model" && msg.parts) {
+              for (const part of msg.parts) {
+                if (part.functionCall && part.functionCall.name) {
+                  toolName = part.functionCall.name;
+                  break;
+                }
+              }
+            } else if (msg.role === "assistant" && msg.content) {
+              const toolUse = msg.content.find(
+                (item) => item.type === "tool_use" && item.id === toolUseId
+              );
+              if (toolUse) {
+                toolName = toolUse.name;
+                break;
+              }
+            }
+          }
+
+          // Log original result for debugging
+          console.log("Original tool result:", JSON.stringify(result, null, 2));
+
+          // Gemini expects the name field in the functionResponse
+          toolResultMessage = {
+            role: "user",
+            parts: [
+              {
+                functionResponse: {
+                  name: toolName,
+                },
+              },
+            ],
+          };
+
+          // Add response only if we have a result
+          if (result) {
+            if (result.is_error) {
+              toolResultMessage.parts[0].functionResponse.response = {
+                error:
+                  typeof result.content === "string"
+                    ? result.content
+                    : JSON.stringify(result.content),
+              };
+            } else {
+              toolResultMessage.parts[0].functionResponse.response = {
+                result:
+                  typeof result === "string" ? result : JSON.stringify(result),
+              };
+            }
+          }
+
+          // Log the final message for debugging
+          console.log(
+            "Gemini function response format:",
+            JSON.stringify(toolResultMessage, null, 2)
+          );
+        }
 
         // Check if we already have this tool result in the message history
-        const existingToolResultIndex = state.messages.findIndex(
-          (msg) =>
-            msg.role === "user" &&
-            msg.content.some(
-              (item) =>
-                item.type === "tool_result" && item.tool_use_id === toolUseId
-            )
-        );
+        let existingToolResultIndex = -1;
+
+        if (apiType === "anthropic") {
+          existingToolResultIndex = state.messages.findIndex(
+            (msg) =>
+              msg.role === "user" &&
+              msg.content &&
+              msg.content.some(
+                (item) =>
+                  item.type === "tool_result" && item.tool_use_id === toolUseId
+              )
+          );
+        } else if (apiType === "openai") {
+          existingToolResultIndex = state.messages.findIndex(
+            (msg) => msg.role === "tool" && msg.tool_call_id === toolUseId
+          );
+        } else if (apiType === "gemini") {
+          // For Gemini, we'll just look for any function response
+          existingToolResultIndex = state.messages.findIndex(
+            (msg) =>
+              msg.role === "function" &&
+              msg.parts &&
+              msg.parts.some((part) => part.functionResponse)
+          );
+        }
 
         if (existingToolResultIndex !== -1) {
           // Replace the existing tool result
@@ -1264,213 +2829,54 @@
 
         // Log the full message history for debugging
         console.log(
-          "Current message history:",
+          "Current message history after tool result:",
           JSON.stringify(state.messages, null, 2)
         );
 
-        // Continue the conversation by sending all messages back to the API
-        const endpoint = "https://api.anthropic.com/v1/messages";
-        const headers = {
-          "Content-Type": "application/json",
-          "X-API-Key": state.apiKey,
-          "Anthropic-Version": "2023-06-01",
-          "Anthropic-Beta": "token-efficient-tools-2025-02-19",
-          "Anthropic-Dangerous-Direct-Browser-Access": "true",
-        };
+        // Continue the conversation by sending the prompt with an empty string
+        // This will tell sendToAnthropicAPI to use the existing messages
+        await sendToAnthropicAPI("");
+      }
 
-        // Create a list of tools from all servers
-        const tools = Object.values(state.servers).flatMap(
+      // Create a list of tools from all servers
+      function getAllTools() {
+        const toolsList = Object.values(state.servers).flatMap(
           (serverInfo) => serverInfo.tools || []
         );
 
-        // Add thinking indicator
-        let thinkingIndicator = addThinkingIndicator();
+        // Ensure all tools have proper parameter schemas
+        return toolsList.map(normalizeToolParameters);
+      }
 
-        try {
-          // Abort any existing streams
-          if (state.activeStreamController) {
-            state.activeStreamController.abort();
+      // Normalize tool parameters to ensure they have proper schema
+      function normalizeToolParameters(tool) {
+        if (!tool) return tool;
+
+        const normalizedTool = { ...tool };
+
+        // If parameters are missing or not an object, create a default schema
+        if (!normalizedTool.parameters) {
+          normalizedTool.parameters = {
+            type: "object",
+            properties: {},
+            required: [],
+          };
+        } else if (typeof normalizedTool.parameters === "object") {
+          // If parameters exists but is missing required fields for OpenAI
+          if (!normalizedTool.parameters.type) {
+            normalizedTool.parameters.type = "object";
           }
 
-          // Create a new AbortController for this request
-          const controller = new AbortController();
-          state.activeStreamController = controller;
-
-          const response = await fetch(endpoint, {
-            method: "POST",
-            headers: headers,
-            body: JSON.stringify({
-              model: "claude-3-7-sonnet-20250219",
-              messages: state.messages,
-              tools: tools,
-              max_tokens: 4096,
-              stream: true,
-            }),
-            signal: controller.signal,
-          });
-
-          if (!response.ok) {
-            const error = await response.json();
-            throw new Error(
-              error.error?.message || `API returned status ${response.status}`
-            );
+          if (!normalizedTool.parameters.properties) {
+            normalizedTool.parameters.properties = {};
           }
 
-          // Process the stream
-          let assistantContainer = null;
-          let currentTextContent = "";
-          let currentJsonContent = "";
-          let currentToolUse = null;
-          let assistantMessageContent = [];
-          let addedAssistantMessage = false;
-
-          for await (const event of parseEventStream(response.body)) {
-            if (event.event === "ping") continue;
-
-            if (!event.data) continue;
-
-            const data = JSON.parse(event.data);
-
-            if (data.type === "message_start") {
-              state.currentAssistantMessage = data.message;
-              assistantMessageContent = []; // Initialize content array for the new message
-              addedAssistantMessage = false;
-            } else if (data.type === "content_block_start") {
-              const contentBlock = data.content_block;
-
-              if (contentBlock.type === "text") {
-                currentTextContent = contentBlock.text || "";
-                assistantContainer = addMessageToUI(
-                  "assistant",
-                  currentTextContent
-                );
-
-                // Add to assistant message content array
-                if (
-                  !assistantMessageContent.some((item) => item.type === "text")
-                ) {
-                  assistantMessageContent.push({
-                    type: "text",
-                    text: currentTextContent,
-                  });
-                }
-              } else if (contentBlock.type === "tool_use") {
-                currentToolUse = {
-                  id: contentBlock.id,
-                  name: contentBlock.name,
-                  input: {},
-                };
-                currentJsonContent = "";
-
-                // If this is the first content, create a container
-                if (!assistantContainer) {
-                  assistantContainer = addMessageToUI("assistant", "");
-                }
-              }
-            } else if (data.type === "content_block_delta") {
-              if (data.delta.type === "text_delta") {
-                currentTextContent += data.delta.text;
-                // Replace with updateStreamingContent to ensure thinking indicator is at bottom
-                thinkingIndicator = updateStreamingContent(
-                  "assistant",
-                  currentTextContent
-                );
-
-                // Update text in the assistant message content
-                const textItem = assistantMessageContent.find(
-                  (item) => item.type === "text"
-                );
-                if (textItem) {
-                  textItem.text = currentTextContent;
-                }
-              } else if (data.delta.type === "input_json_delta") {
-                if (currentToolUse) {
-                  currentJsonContent += data.delta.partial_json || "";
-                }
-              }
-            } else if (data.type === "content_block_stop") {
-              if (currentToolUse) {
-                // Try to parse the accumulated JSON
-                if (currentJsonContent) {
-                  try {
-                    const parsedJson = JSON.parse(currentJsonContent);
-                    currentToolUse.input = parsedJson;
-                  } catch (e) {
-                    console.log("Error parsing tool input JSON:", e);
-                  }
-                }
-
-                // Add the tool call to the UI
-                addToolCallToUI(
-                  currentToolUse.name,
-                  currentToolUse.input,
-                  assistantContainer
-                );
-
-                // Add the tool use to the message content array
-                assistantMessageContent.push({
-                  type: "tool_use",
-                  id: currentToolUse.id,
-                  name: currentToolUse.name,
-                  input: currentToolUse.input,
-                });
-
-                // Handle the tool call
-                handleToolCall(currentToolUse, assistantContainer);
-
-                currentToolUse = null;
-              }
-            } else if (data.type === "message_delta") {
-              if (data.delta.stop_reason === "tool_use") {
-                state.isWaitingForToolResult = true;
-
-                // We'll let handleToolCall manage adding this to avoid duplication
-                if (
-                  !addedAssistantMessage &&
-                  assistantMessageContent.some(
-                    (item) => item.type === "tool_use"
-                  )
-                ) {
-                  addedAssistantMessage = true;
-                }
-              }
-            } else if (data.type === "message_stop") {
-              // Message completed - only add to history if not waiting for tool result
-              // and message hasn't been added yet
-              if (
-                !state.isWaitingForToolResult &&
-                assistantMessageContent.length > 0 &&
-                !addedAssistantMessage
-              ) {
-                state.messages.push({
-                  role: "assistant",
-                  content: assistantMessageContent,
-                });
-
-                console.log(
-                  "Added final assistant message to history after tool result:",
-                  JSON.stringify(assistantMessageContent, null, 2)
-                );
-
-                addedAssistantMessage = true;
-              }
-
-              state.currentAssistantMessage = null;
-              state.activeStreamController = null;
-            }
+          if (!normalizedTool.parameters.required) {
+            normalizedTool.parameters.required = [];
           }
-        } catch (error) {
-          console.error("Error sending tool result:", error);
-          const errorMessage = document.createElement("div");
-          errorMessage.className = "message assistant-message";
-          errorMessage.innerHTML = `<strong>Error:</strong> ${
-            error.message || "Failed to process tool result. Please try again."
-          }`;
-          elements.messagesContainer.appendChild(errorMessage);
-        } finally {
-          // Remove thinking indicator
-          removeThinkingIndicator(thinkingIndicator);
         }
+
+        return normalizedTool;
       }
 
       // Initialize the app when loaded
