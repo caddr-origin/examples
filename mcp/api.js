@@ -294,8 +294,9 @@ caddrFrame.style.height = "80px";
 
 async function configureFrame() {
   const searchParams = new URLSearchParams(location.search);
-  let contractURL = new URL("contract.js", location.href);
+  let contractURL;
   if (searchParams.get("dev")) {
+    contractURL = new URL("contract.js", location.href);
     contractURL.searchParams.set("date", Date.now());
     const hash32 = await getHash32(contractURL);
     hostOrigin = "https://" + hash32 + ".caddr.org";
@@ -309,7 +310,7 @@ async function configureFrame() {
 
   let url = new URL(hostOrigin);
   url.searchParams.set("src", contractURL);
-  if (searchParams.get("useRedirect") !== 'false')
+  if (searchParams.get("useRedirect") !== "false")
     url.searchParams.set("useRedirect", "true");
   caddrFrame.setAttribute("src", url);
 }
