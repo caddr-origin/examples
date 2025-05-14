@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>File Explorer Server</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        margin: 0;
+        padding: 20px;
+        background-color: #f5f5f5;
+        color: #333;
+      }
+      h1, h2, h3 {
+        color: #333;
+      }
+      h1 {
+        border-bottom: 1px solid #ddd;
+        padding-bottom: 10px;
+      }
+      #drop-area {
+        border: 2px dashed #ccc;
+        border-radius: 8px;
+        width: 100%;
+        height: 200px;
+        padding: 20px;
+        text-align: center;
+        margin: 20px 0;
+        background-color: #fafafa;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        transition: background-color 0.3s, border-color 0.3s;
+      }
+      #drop-area.highlight {
+        background-color: #e8f5e9;
+        border-color: #4caf50;
+      }
+      #file-icon {
+        font-size: 48px;
+        margin-bottom: 10px;
+        color: #757575;
+      }
+      #file-list {
+        width: 100%;
+        max-height: 400px;
+        overflow: auto;
+        background-color: white;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 10px;
+        margin-bottom: 20px;
+      }
+      #status {
+        background-color: #f8f8f8;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 10px;
+        font-family: monospace;
+        margin-bottom: 20px;
+        white-space: pre-wrap;
+        max-height: 150px;
+        overflow-y: auto;
+      }
+      .file-item {
+        display: flex;
+        align-items: center;
+        padding: 5px;
+        border-bottom: 1px solid #eee;
+      }
+      .file-item:last-child {
+        border-bottom: none;
+      }
+      .file-item-icon {
+        margin-right: 10px;
+      }
+      .folder {
+        font-weight: bold;
+        color: #1976d2;
+      }
+      .file {
+        color: #333;
+      }
+      .file-size {
+        margin-left: auto;
+        color: #757575;
+        font-size: 12px;
+      }
+      .file-entry {
+        margin: 2px 0;
+        padding: 3px 5px;
+        border-radius: 3px;
+      }
+      .file-entry:hover {
+        background-color: #f0f0f0;
+      }
+      .file-structure {
+        padding-left: 15px;
+      }
+      .success {
+        color: #43a047;
+      }
+      .error {
+        color: #e53935;
+      }
+      .info {
+        color: #1976d2;
+      }
+      .empty-message {
+        color: #757575;
+        text-align: center;
+        padding: 20px;
+        font-style: italic;
+      }
+      .controls {
+        margin-bottom: 20px;
+      }
+      #content-viewer {
+        background-color: white;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 15px;
+        margin-top: 20px;
+        white-space: pre-wrap;
+        font-family: monospace;
+        min-height: 200px;
+        max-height: 400px;
+        overflow: auto;
+      }
+      .content-viewer-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-bottom: 10px;
+        margin-bottom: 10px;
+        border-bottom: 1px solid #eee;
+      }
+      .content-path {
+        font-weight: bold;
+        color: #1976d2;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 80%;
+      }
+      .content-type {
+        color: #757575;
+        font-size: 12px;
+      }
+      .hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>File Explorer Server</h1>
+
+    <div id="authorizationFrame" style="display: none">
+      <h1>Authorization</h1>
+      <p>Please authorize this server to access your files.</p>
+    </div>
+
+    <div id="dataBox">
+      <div id="drop-area">
+        <div id="file-icon">📁</div>
+        <p>Drag and drop files or folders here</p>
+        <p style="font-size: 14px; color: #757575;">or click to select files</p>
+        <input type="file" id="fileInput" multiple webkitdirectory style="display: none">
+      </div>
+
+      <h3>Status</h3>
+      <div id="status">Ready to receive files...</div>
+
+      <h3>File Structure</h3>
+      <div id="file-list">
+        <div class="empty-message">No files uploaded yet.</div>
+      </div>
+
+      <div id="content-viewer-container" class="hidden">
+        <h3>File Content</h3>
+        <div id="content-viewer">
+          <div class="content-viewer-header">
+            <div class="content-path">No file selected</div>
+            <div class="content-type"></div>
+          </div>
+          <div id="content-view">Select a file to view its contents</div>
+        </div>
+      </div>
+    </div>
+    
+    <script src="api.js"></script>
+
+    <script>
+      // Store all files and directories
+      const fileSystem = {
+        files: new Map(),
+        directories: new Map(),
+        rootEntries: []
+      };
+
+      // Helper function to format file size
+      function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+      }
+
+      // Helper function to log status
+      function logStatus(message, type = 'info') {
+        const statusElem = document.getElementById('status');
+        const logEntry = document.createElement('div');
+        logEntry.className = type;
+        logEntry.textContent = message;
+        statusElem.appendChild(logEntry);
+        statusElem.scrollTop = statusElem.scrollHeight;
+      }
+
+      // Process uploaded files
+      function processFiles(items) {
+        // Clear previous data
+        fileSystem.files.clear();
+        fileSystem.directories.clear();
+        fileSystem.rootEntries = [];
+        logStatus('Processing files...');
+
+        const promises = [];
+        const fileEntriesPromises = [];
+
+        // Process each item (could be file or directory)
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          if (item.kind === 'file') {
+            const entry = item.webkitGetAsEntry();
+            if (entry) {
+              fileEntriesPromises.push(processEntry(entry, null));
+            }
+          }
+        }
+
+        Promise.all(fileEntriesPromises)
+          .then(() => {
+            updateFileListDisplay();
+            logStatus(`Processed ${fileSystem.files.size} files and ${fileSystem.directories.size} directories`, 'success');
+          })
+          .catch(error => {
+            logStatus(`Error processing files: ${error.message}`, 'error');
+            console.error(error);
+          });
+      }
+
+      // Process a FileSystemEntry recursively
+      function processEntry(entry, parentDir) {
+        return new Promise((resolve, reject) => {
+          if (entry.isFile) {
+            entry.file(file => {
+              const path = entry.fullPath;
+              fileSystem.files.set(path, {
+                name: entry.name,
+                path: path,
+                size: file.size,
+                type: file.type,
+                lastModified: file.lastModified,
+                file: file
+              });
+              
+              if (!parentDir) {
+                fileSystem.rootEntries.push({
+                  type: 'file',
+                  name: entry.name,
+                  path: path
+                });
+              }
+              
+              resolve();
+            }, reject);
+          } else if (entry.isDirectory) {
+            const path = entry.fullPath;
+            const dirInfo = {
+              name: entry.name,
+              path: path,
+              children: []
+            };
+            
+            fileSystem.directories.set(path, dirInfo);
+            
+            if (!parentDir) {
+              fileSystem.rootEntries.push({
+                type: 'directory',
+                name: entry.name,
+                path: path
+              });
+            } else {
+              const parent = fileSystem.directories.get(parentDir);
+              if (parent) {
+                parent.children.push({
+                  type: 'directory',
+                  name: entry.name,
+                  path: path
+                });
+              }
+            }
+            
+            const dirReader = entry.createReader();
+            readEntries(dirReader, path).then(resolve).catch(reject);
+          }
+        });
+      }
+
+      // Read all entries in a directory
+      function readEntries(dirReader, dirPath) {
+        return new Promise((resolve, reject) => {
+          const allEntries = [];
+          
+          function readBatch() {
+            dirReader.readEntries(entries => {
+              if (entries.length === 0) {
+                // Process all collected entries
+                Promise.all(allEntries.map(entry => processEntry(entry, dirPath)))
+                  .then(resolve)
+                  .catch(reject);
+              } else {
+                // Add these entries to our collection
+                allEntries.push(...entries);
+                
+                // Get the next batch
+                readBatch();
+              }
+            }, reject);
+          }
+          
+          readBatch();
+        });
+      }
+
+      // Update the file list display
+      function updateFileListDisplay() {
+        const fileListElem = document.getElementById('file-list');
+        fileListElem.innerHTML = '';
+        
+        if (fileSystem.rootEntries.length === 0) {
+          fileListElem.innerHTML = '<div class="empty-message">No files uploaded yet.</div>';
+          return;
+        }
+        
+        // Sort entries (directories first, then files)
+        const sortedEntries = [...fileSystem.rootEntries].sort((a, b) => {
+          if (a.type !== b.type) {
+            return a.type === 'directory' ? -1 : 1;
+          }
+          return a.name.localeCompare(b.name);
+        });
+        
+        // Create HTML for the file tree
+        for (const entry of sortedEntries) {
+          const entryElement = createEntryElement(entry);
+          fileListElem.appendChild(entryElement);
+        }
+      }
+
+      // Create HTML element for a file or directory entry
+      function createEntryElement(entry) {
+        const entryElem = document.createElement('div');
+        entryElem.className = 'file-entry';
+        
+        if (entry.type === 'directory') {
+          const dirInfo = fileSystem.directories.get(entry.path);
+          
+          entryElem.innerHTML = `
+            <div class="file-item">
+              <span class="file-item-icon">📁</span>
+              <span class="folder">${entry.name}</span>
+            </div>
+          `;
+          
+          if (dirInfo && dirInfo.children.length > 0) {
+            const childrenElem = document.createElement('div');
+            childrenElem.className = 'file-structure';
+            
+            // Sort children (directories first, then files)
+            const sortedChildren = [...dirInfo.children];
+            sortedChildren.sort((a, b) => {
+              if (a.type !== b.type) {
+                return a.type === 'directory' ? -1 : 1;
+              }
+              return a.name.localeCompare(b.name);
+            });
+            
+            // Add file entries to the directory
+            const dirFiles = [...fileSystem.files.entries()]
+              .filter(([path]) => path.startsWith(entry.path + '/') && path.split('/').length === entry.path.split('/').length + 1)
+              .map(([path, fileInfo]) => ({
+                type: 'file',
+                name: fileInfo.name,
+                path: path
+              }));
+            
+            sortedChildren.push(...dirFiles);
+            sortedChildren.sort((a, b) => {
+              if (a.type !== b.type) {
+                return a.type === 'directory' ? -1 : 1;
+              }
+              return a.name.localeCompare(b.name);
+            });
+            
+            for (const child of sortedChildren) {
+              const childElem = createEntryElement(child);
+              childrenElem.appendChild(childElem);
+            }
+            
+            entryElem.appendChild(childrenElem);
+          }
+        } else if (entry.type === 'file') {
+          const fileInfo = fileSystem.files.get(entry.path);
+          
+          entryElem.innerHTML = `
+            <div class="file-item">
+              <span class="file-item-icon">📄</span>
+              <span class="file">${entry.name}</span>
+              <span class="file-size">${formatFileSize(fileInfo.size)}</span>
+            </div>
+          `;
+          
+          // Add click event to view file contents
+          entryElem.querySelector('.file-item').addEventListener('click', () => {
+            showFileContent(entry.path);
+          });
+        }
+        
+        return entryElem;
+      }
+
+      // Show file content
+      function showFileContent(path) {
+        const fileInfo = fileSystem.files.get(path);
+        if (!fileInfo) {
+          logStatus(`File not found: ${path}`, 'error');
+          return;
+        }
+        
+        const contentViewerContainer = document.getElementById('content-viewer-container');
+        const contentPath = document.querySelector('.content-path');
+        const contentType = document.querySelector('.content-type');
+        const contentView = document.getElementById('content-view');
+        
+        contentViewerContainer.classList.remove('hidden');
+        contentPath.textContent = path;
+        contentType.textContent = fileInfo.type || 'unknown';
+        
+        // Read file contents
+        const reader = new FileReader();
+        
+        reader.onload = function(e) {
+          const content = e.target.result;
+          
+          // For text files, display the content directly
+          if (fileInfo.type.startsWith('text/') || 
+              fileInfo.type === 'application/json' || 
+              fileInfo.name.endsWith('.md') || 
+              fileInfo.name.endsWith('.js') || 
+              fileInfo.name.endsWith('.css') || 
+              fileInfo.name.endsWith('.html') || 
+              fileInfo.name.endsWith('.xml') || 
+              fileInfo.name.endsWith('.csv')) {
+            contentView.textContent = content;
+          } else {
+            // For binary files, show a message
+            contentView.textContent = `[Binary file content - ${formatFileSize(fileInfo.size)}]`;
+          }
+        };
+        
+        reader.onerror = function() {
+          contentView.textContent = `Error reading file: ${reader.error.message}`;
+          logStatus(`Error reading file: ${reader.error.message}`, 'error');
+        };
+        
+        // Determine how to read the file based on type
+        if (fileInfo.type.startsWith('text/') || 
+            fileInfo.type === 'application/json' || 
+            fileInfo.name.endsWith('.md') || 
+            fileInfo.name.endsWith('.js') || 
+            fileInfo.name.endsWith('.css') || 
+            fileInfo.name.endsWith('.html') || 
+            fileInfo.name.endsWith('.xml') || 
+            fileInfo.name.endsWith('.csv')) {
+          reader.readAsText(fileInfo.file);
+        } else {
+          // Just display file info for binary files, no need to read content
+          contentView.textContent = `[Binary file - ${formatFileSize(fileInfo.size)}]`;
+        }
+      }
+
+      // Generate file structure for tool
+      function generateFileStructure() {
+        const structure = {
+          root: {
+            directories: [],
+            files: []
+          }
+        };
+        
+        // Add root directories
+        for (const entry of fileSystem.rootEntries) {
+          if (entry.type === 'directory') {
+            const dirInfo = fileSystem.directories.get(entry.path);
+            structure.root.directories.push(buildDirectoryStructure(dirInfo));
+          } else if (entry.type === 'file') {
+            const fileInfo = fileSystem.files.get(entry.path);
+            structure.root.files.push({
+              name: fileInfo.name,
+              path: fileInfo.path,
+              size: fileInfo.size,
+              type: fileInfo.type || 'unknown',
+              lastModified: fileInfo.lastModified
+            });
+          }
+        }
+        
+        return structure;
+      }
+
+      // Build directory structure recursively
+      function buildDirectoryStructure(dirInfo) {
+        const directory = {
+          name: dirInfo.name,
+          path: dirInfo.path,
+          directories: [],
+          files: []
+        };
+        
+        // Add subdirectories
+        for (const childEntry of dirInfo.children) {
+          if (childEntry.type === 'directory') {
+            const childDirInfo = fileSystem.directories.get(childEntry.path);
+            directory.directories.push(buildDirectoryStructure(childDirInfo));
+          }
+        }
+        
+        // Add files directly in this directory
+        for (const [path, fileInfo] of fileSystem.files.entries()) {
+          const pathParts = path.split('/');
+          const dirPathParts = dirInfo.path.split('/');
+          
+          // Check if this file is directly in this directory
+          if (pathParts.length === dirPathParts.length + 1 && path.startsWith(dirInfo.path + '/')) {
+            directory.files.push({
+              name: fileInfo.name,
+              path: fileInfo.path,
+              size: fileInfo.size,
+              type: fileInfo.type || 'unknown',
+              lastModified: fileInfo.lastModified
+            });
+          }
+        }
+        
+        return directory;
+      }
+
+      // Setup drag and drop
+      const dropArea = document.getElementById('drop-area');
+      const fileInput = document.getElementById('fileInput');
+      
+      // Prevent default drag behaviors
+      ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropArea.addEventListener(eventName, preventDefaults, false);
+        document.body.addEventListener(eventName, preventDefaults, false);
+      });
+      
+      // Highlight drop area when dragging over it
+      ['dragenter', 'dragover'].forEach(eventName => {
+        dropArea.addEventListener(eventName, highlight, false);
+      });
+      
+      ['dragleave', 'drop'].forEach(eventName => {
+        dropArea.addEventListener(eventName, unhighlight, false);
+      });
+      
+      // Handle drop
+      dropArea.addEventListener('drop', handleDrop, false);
+      
+      // Handle click on drop area
+      dropArea.addEventListener('click', () => {
+        fileInput.click();
+      });
+      
+      // Handle file input change
+      fileInput.addEventListener('change', handleFiles, false);
+      
+      function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      
+      function highlight() {
+        dropArea.classList.add('highlight');
+      }
+      
+      function unhighlight() {
+        dropArea.classList.remove('highlight');
+      }
+      
+      function handleDrop(e) {
+        const dt = e.dataTransfer;
+        const items = dt.items;
+        
+        logStatus('Files dropped. Processing...');
+        processFiles(items);
+      }
+      
+      function handleFiles() {
+        logStatus('Files selected. Processing...');
+        
+        // Create DataTransferItemList-like structure
+        const items = Array.from(fileInput.files).map(file => {
+          return {
+            kind: 'file',
+            webkitGetAsEntry: () => {
+              // Create a minimal FileSystemEntry-like object
+              return {
+                isFile: true,
+                isDirectory: false,
+                name: file.name,
+                fullPath: '/' + file.name,
+                file: callback => callback(file)
+              };
+            }
+          };
+        });
+        
+        processFiles(items);
+      }
+
+      registerMCPServer({
+        insertFrame: (frame) => {
+          document.getElementById("authorizationFrame").appendChild(frame);
+        },
+        showAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "block";
+        },
+        hideAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "none";
+        },
+        name: "file explorer",
+        version: "1.0.0",
+        tools: [
+          {
+            name: "get_file_structure",
+            description: "Get the structure of all uploaded files and directories",
+            input_schema: {
+              type: "object",
+              properties: {},
+              required: [],
+            },
+            execute(sender, params) {
+              // Check if files have been uploaded
+              if (fileSystem.files.size === 0 && fileSystem.directories.size === 0) {
+                return {
+                  success: false,
+                  error: "No files have been uploaded yet. Please drag and drop files or folders first."
+                };
+              }
+              
+              // Generate file structure
+              const structure = generateFileStructure();
+              
+              // Return the structure
+              return {
+                success: true,
+                structure: structure,
+                stats: {
+                  totalFiles: fileSystem.files.size,
+                  totalDirectories: fileSystem.directories.size,
+                  totalSize: Array.from(fileSystem.files.values()).reduce((sum, file) => sum + file.size, 0)
+                }
+              };
+            },
+          },
+          {
+            name: "read_file",
+            description: "Read the contents of a specific file by path",
+            input_schema: {
+              type: "object",
+              properties: {
+                path: {
+                  type: "string",
+                  description: "The path of the file to read"
+                }
+              },
+              required: ["path"],
+            },
+            async execute(sender, params) {
+              // Check if files have been uploaded
+              if (fileSystem.files.size === 0) {
+                return {
+                  success: false,
+                  error: "No files have been uploaded yet. Please drag and drop files or folders first."
+                };
+              }
+              
+              // Check if the path exists
+              if (!fileSystem.files.has(params.path)) {
+                return {
+                  success: false,
+                  error: `File not found: ${params.path}`
+                };
+              }
+              
+              const fileInfo = fileSystem.files.get(params.path);
+              
+              try {
+                // Read file content
+                const content = await new Promise((resolve, reject) => {
+                  const reader = new FileReader();
+                  
+                  reader.onload = (e) => resolve(e.target.result);
+                  reader.onerror = () => reject(new Error('Error reading file'));
+                  
+                  // Determine how to read the file based on type
+                  if (fileInfo.type.startsWith('text/') || 
+                      fileInfo.type === 'application/json' || 
+                      fileInfo.name.endsWith('.md') || 
+                      fileInfo.name.endsWith('.js') || 
+                      fileInfo.name.endsWith('.css') || 
+                      fileInfo.name.endsWith('.html') || 
+                      fileInfo.name.endsWith('.xml') || 
+                      fileInfo.name.endsWith('.csv')) {
+                    reader.readAsText(fileInfo.file);
+                  } else {
+                    // For binary files, read as data URL
+                    reader.readAsDataURL(fileInfo.file);
+                  }
+                });
+                
+                // Show the content in the UI
+                showFileContent(params.path);
+                
+                // For binary files, don't return the actual content
+                const isBinary = !fileInfo.type.startsWith('text/') && 
+                                !fileInfo.type === 'application/json' && 
+                                !fileInfo.name.endsWith('.md') && 
+                                !fileInfo.name.endsWith('.js') && 
+                                !fileInfo.name.endsWith('.css') && 
+                                !fileInfo.name.endsWith('.html') && 
+                                !fileInfo.name.endsWith('.xml') && 
+                                !fileInfo.name.endsWith('.csv');
+                
+                return {
+                  success: true,
+                  file: {
+                    name: fileInfo.name,
+                    path: fileInfo.path,
+                    size: fileInfo.size,
+                    type: fileInfo.type || 'unknown',
+                    lastModified: fileInfo.lastModified,
+                    content: isBinary ? '[Binary content]' : content
+                  }
+                };
+              } catch (error) {
+                return {
+                  success: false,
+                  error: `Error reading file: ${error.message}`
+                };
+              }
+            },
+          }
+        ],
+      });
+    </script>
+  </body>
+</html>
