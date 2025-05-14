@@ -3,21 +3,56 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>caddr.org iframe communication</title>
+    <title>Open-Meteo API Tools</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 20px;
+        line-height: 1.5;
+      }
+      h1, h2 {
+        color: #2c3e50;
+      }
+      #dataBox {
+        margin-top: 20px;
+        padding: 15px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        background-color: #f8f9fa;
+        overflow-x: auto;
+      }
+      pre {
+        background-color: #f1f1f1;
+        padding: 10px;
+        border-radius: 5px;
+        overflow-x: auto;
+      }
+      .tool-info {
+        margin-top: 15px;
+        padding: 10px;
+        border-left: 4px solid #3498db;
+        background-color: #eaf2f8;
+      }
+    </style>
   </head>
   <body>
     <h1>CADDR-MCP Weather Server</h1>
-
     <div id="authorizationFrame" style="display: none">
       <h1>Authorization</h1>
-      <p>Please authorize this server to access your weather data.</p>
+      <p>Please authorize this server to access weather data.</p>
     </div>
-
     <br />
-
-    <div id="dataBox"></div>
+    <div class="tool-info">
+      <h2>Available Tools</h2>
+      <p><strong>1. Geocoding Tool:</strong> Convert location names to coordinates</p>
+      <p><strong>2. Weather Forecast Tool:</strong> Get detailed weather data for a location</p>
+    </div>
+    <div id="dataBox">
+      <p>Response data will appear here after a tool is used.</p>
+    </div>
     <script src="api.js"></script>
-
     <script>
       registerMCPServer({
         insertFrame: (frame) => {
@@ -33,23 +68,200 @@
         version: "1.0.0",
         tools: [
           {
-            name: "get_weather",
-            description:
-              "Gets the current weather in a city. Returns temperature in Fahrenheit.",
+            name: "geocode_location",
+            description: "Converts a location name or postal code to geographic coordinates using the Open-Meteo Geocoding API.",
             input_schema: {
               type: "object",
               properties: {
-                city: {
+                name: {
                   type: "string",
-                  description: `The name of the city to get the weather for.
-                      `,
+                  description: "Location name or postal code to search for. At least 2 characters required."
                 },
+                count: {
+                  type: "integer",
+                  description: "Number of results to return (1-100).",
+                  default: 10
+                },
+                language: {
+                  type: "string",
+                  description: "Language for results (e.g., 'en', 'de', 'fr', 'es').",
+                  default: "en"
+                },
+                countryCode: {
+                  type: "string",
+                  description: "ISO-3166-1 alpha2 country code to filter results (e.g., 'US', 'DE', 'GB')."
+                }
               },
-              required: ["city"],
+              required: ["name"]
             },
             async execute(sender, params) {
-              await new Promise((resolve) => setTimeout(resolve, 1000));
-              return 72.6;
+              try {
+                // Build the geocoding URL with all parameters
+                let geocodingUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(params.name)}`;
+                
+                // Add optional parameters if provided
+                if (params.count) {
+                  geocodingUrl += `&count=${params.count}`;
+                }
+                
+                if (params.language) {
+                  geocodingUrl += `&language=${params.language.toLowerCase()}`;
+                }
+                
+                if (params.countryCode) {
+                  geocodingUrl += `&country_code=${params.countryCode.toUpperCase()}`;
+                }
+                
+                // Make the API request
+                const response = await fetch(geocodingUrl);
+                
+                if (!response.ok) {
+                  throw new Error(`Geocoding API error: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                // Display formatted JSON in the dataBox
+                document.getElementById("dataBox").innerHTML = `
+                  <h3>Geocoding Results</h3>
+                  <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+                
+                return data;
+              } catch (error) {
+                console.error("Error in geocoding:", error);
+                document.getElementById("dataBox").innerHTML = `
+                  <p style="color: red">Error: ${error.message}</p>
+                `;
+                throw error;
+              }
+            },
+          },
+          {
+            name: "get_weather_forecast",
+            description: "Gets detailed weather forecast data for a location using the Open-Meteo Weather API.",
+            input_schema: {
+              type: "object",
+              properties: {
+                latitude: {
+                  type: "number",
+                  description: "WGS84 latitude coordinate"
+                },
+                longitude: {
+                  type: "number",
+                  description: "WGS84 longitude coordinate"
+                },
+                hourly: {
+                  type: "array",
+                  items: {
+                    type: "string"
+                  },
+                  description: "Hourly weather variables to include (e.g., 'temperature_2m', 'precipitation', 'wind_speed_10m')"
+                },
+                daily: {
+                  type: "array",
+                  items: {
+                    type: "string"
+                  },
+                  description: "Daily weather variables to include (e.g., 'temperature_2m_max', 'precipitation_sum', 'sunrise')"
+                },
+                current: {
+                  type: "array",
+                  items: {
+                    type: "string"
+                  },
+                  description: "Current weather variables to include (e.g., 'temperature_2m', 'wind_speed_10m')"
+                },
+                temperature_unit: {
+                  type: "string",
+                  enum: ["celsius", "fahrenheit"],
+                  description: "Unit for temperature values",
+                  default: "celsius"
+                },
+                wind_speed_unit: {
+                  type: "string",
+                  enum: ["kmh", "ms", "mph", "kn"],
+                  description: "Unit for wind speed values",
+                  default: "kmh"
+                },
+                precipitation_unit: {
+                  type: "string",
+                  enum: ["mm", "inch"],
+                  description: "Unit for precipitation values",
+                  default: "mm"
+                },
+                timezone: {
+                  type: "string",
+                  description: "Timezone for data (e.g., 'auto', 'GMT', 'America/New_York', 'Europe/Berlin')",
+                  default: "GMT"
+                },
+                forecast_days: {
+                  type: "integer",
+                  description: "Number of forecast days (1-16)",
+                  default: 7
+                },
+                past_days: {
+                  type: "integer",
+                  description: "Number of past days (0-2)",
+                  default: 0
+                },
+                cell_selection: {
+                  type: "string",
+                  enum: ["land", "sea", "nearest"],
+                  description: "Preference for grid-cell selection",
+                  default: "land"
+                }
+              },
+              required: ["latitude", "longitude"]
+            },
+            async execute(sender, params) {
+              try {
+                // Start building the forecast URL with required parameters
+                let forecastUrl = `https://api.open-meteo.com/v1/forecast?latitude=${params.latitude}&longitude=${params.longitude}`;
+                
+                // Add optional array parameters
+                const arrayParams = ["hourly", "daily", "current"];
+                for (const param of arrayParams) {
+                  if (params[param] && params[param].length > 0) {
+                    forecastUrl += `&${param}=${params[param].join(",")}`;
+                  }
+                }
+                
+                // Add optional string/number parameters
+                const optionalParams = [
+                  "temperature_unit", "wind_speed_unit", "precipitation_unit", 
+                  "timezone", "forecast_days", "past_days", "cell_selection"
+                ];
+                
+                for (const param of optionalParams) {
+                  if (params[param] !== undefined) {
+                    forecastUrl += `&${param}=${params[param]}`;
+                  }
+                }
+                
+                // Make the API request
+                const response = await fetch(forecastUrl);
+                
+                if (!response.ok) {
+                  throw new Error(`Weather API error: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                // Display formatted JSON in the dataBox
+                document.getElementById("dataBox").innerHTML = `
+                  <h3>Weather Forecast Results</h3>
+                  <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+                
+                return data;
+              } catch (error) {
+                console.error("Error fetching weather data:", error);
+                document.getElementById("dataBox").innerHTML = `
+                  <p style="color: red">Error: ${error.message}</p>
+                `;
+                throw error;
+              }
             },
           },
         ],
