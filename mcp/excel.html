@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>caddr.org Excel Viewer</title>
+    <!-- ExcelJS from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Helvetica, Arial, sans-serif;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        overflow: hidden;
+      }
+      .header {
+        background-color: #f0f0f0;
+        padding: 8px 16px;
+        border-bottom: 1px solid #ddd;
+        font-size: 14px;
+        color: #333;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .header h1 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 500;
+      }
+      #upload-container {
+        padding: 10px;
+        background-color: #f9f9f9;
+        border-bottom: 1px solid #ddd;
+      }
+      .tab-bar {
+        display: flex;
+        overflow-x: auto;
+        background-color: #f5f5f5;
+        border-bottom: 1px solid #ddd;
+      }
+      .tab {
+        padding: 8px 16px;
+        cursor: pointer;
+        border-right: 1px solid #ddd;
+        white-space: nowrap;
+      }
+      .tab.active {
+        background-color: #fff;
+        border-bottom: 2px solid #0066cc;
+      }
+      .spreadsheet-container {
+        flex: 1;
+        overflow: auto;
+        position: relative;
+      }
+      table {
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+      th,
+      td {
+        border: 1px solid #ddd;
+        padding: 6px;
+        min-width: 80px;
+        height: 24px;
+        text-align: left;
+        white-space: nowrap;
+      }
+      th {
+        background-color: #f2f2f2;
+        position: sticky;
+        top: 0;
+        z-index: 1;
+      }
+      .row-header {
+        background-color: #f2f2f2;
+        position: sticky;
+        left: 0;
+        z-index: 1;
+      }
+      .highlighted {
+        background-color: rgba(0, 102, 204, 0.2);
+      }
+      .modal {
+        display: none;
+        position: fixed;
+        z-index: 10;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.4);
+      }
+      .modal-content {
+        background-color: white;
+        margin: 15% auto;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        width: 50%;
+      }
+      #metadataDisplay {
+        padding: 10px;
+        background-color: #f9f9f9;
+        border-bottom: 1px solid #ddd;
+        max-height: 100px;
+        overflow-y: auto;
+        display: none;
+      }
+      .drop-zone {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 102, 204, 0.3);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 100;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+      }
+      .drop-zone.active {
+        opacity: 1;
+      }
+      .drop-message {
+        padding: 30px 50px;
+        background-color: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        font-size: 18px;
+        font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <h1>CADDR-MCP Excel Viewer</h1>
+      <div id="file-info"></div>
+    </div>
+
+    <div id="tabBar" class="tab-bar"></div>
+
+    <div id="spreadsheetContainer" class="spreadsheet-container">
+      <div id="spreadsheetContent"></div>
+    </div>
+
+    <div id="authorizationFrame" class="modal">
+      <div class="modal-content">
+        <h2>Authorization</h2>
+        <p>Please authorize this server to access your Excel data.</p>
+      </div>
+    </div>
+
+    <div id="dropZone" class="drop-zone">
+      <div class="drop-message">Drop Excel file here</div>
+    </div>
+
+    <script src="api.js"></script>
+
+    <script>
+      // State variables
+      let workbook = null;
+      let currentSheetName = null;
+      let highlightedCells = [];
+
+      // DOM Elements
+      const fileUpload = document.getElementById("fileUpload");
+      const uploadBtn = document.getElementById("uploadBtn");
+      const tabBar = document.getElementById("tabBar");
+      const spreadsheetContent = document.getElementById("spreadsheetContent");
+      const fileInfo = document.getElementById("file-info");
+      const showMetadataBtn = document.getElementById("showMetadataBtn");
+      const metadataDisplay = document.getElementById("metadataDisplay");
+
+      // Initialize
+
+      // Set up drag and drop functionality
+      const dropZone = document.getElementById("dropZone");
+
+      // Prevent default behavior for drag events on the entire document
+      ["dragenter", "dragover", "dragleave", "drop"].forEach((eventName) => {
+        document.addEventListener(eventName, preventDefaults, false);
+      });
+
+      function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+
+      // Handle drag events to show visual feedback
+      ["dragenter", "dragover"].forEach((eventName) => {
+        document.addEventListener(eventName, showDropZone, false);
+      });
+
+      ["dragleave", "drop"].forEach((eventName) => {
+        document.addEventListener(eventName, hideDropZone, false);
+      });
+
+      function showDropZone() {
+        dropZone.classList.add("active");
+      }
+
+      function hideDropZone() {
+        dropZone.classList.remove("active");
+      }
+
+      // Handle the actual file drop
+      document.addEventListener("drop", handleDrop, false);
+
+      function handleDrop(e) {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+
+        if (files.length) {
+          const file = files[0];
+          // Check if file is Excel
+          if (file.name.match(/\.(xlsx|xls)$/i)) {
+            processExcelFile(file);
+          } else {
+            alert("Please drop an Excel file (.xlsx or .xls)");
+          }
+        }
+      }
+
+      // Process the Excel file (extracted from handleFileUpload)
+      function processExcelFile(file) {
+        const reader = new FileReader();
+        reader.onload = async function (e) {
+          try {
+            const data = new Uint8Array(e.target.result);
+            workbook = new ExcelJS.Workbook();
+            await workbook.xlsx.load(data);
+
+            fileInfo.textContent = file.name;
+
+            renderSheetTabs();
+            // Load the first sheet by default
+            if (workbook.worksheets.length > 0) {
+              const firstSheet = workbook.worksheets[0];
+              loadSheet(firstSheet.name);
+            }
+          } catch (error) {
+            console.error("Error processing Excel file:", error);
+            alert("Error processing Excel file. Please try another file.");
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      }
+
+      // Upload and process Excel file - modified to use processExcelFile
+      function handleFileUpload(event) {
+        const file = event.target.files[0];
+        if (file) {
+          processExcelFile(file);
+        }
+      }
+
+      // Render sheet tabs
+      function renderSheetTabs() {
+        tabBar.innerHTML = "";
+        workbook.worksheets.forEach((sheet) => {
+          const tab = document.createElement("div");
+          tab.classList.add("tab");
+          tab.textContent = sheet.name;
+          tab.addEventListener("click", () => loadSheet(sheet.name));
+          tabBar.appendChild(tab);
+        });
+      }
+
+      // Load sheet data
+      function loadSheet(sheetName) {
+        // Update tabs
+        document.querySelectorAll(".tab").forEach((tab) => {
+          tab.classList.toggle("active", tab.textContent === sheetName);
+        });
+
+        currentSheetName = sheetName;
+        const worksheet = workbook.getWorksheet(sheetName);
+        renderWorksheet(worksheet);
+
+        // Clear any previous highlights
+        highlightedCells = [];
+      }
+
+      // Render worksheet data
+      function renderWorksheet(worksheet) {
+        const table = document.createElement("table");
+
+        // Create header row with column letters
+        const headerRow = document.createElement("tr");
+        const cornerCell = document.createElement("th");
+        headerRow.appendChild(cornerCell);
+
+        // Find the max column used in the worksheet
+        const maxCol = worksheet.actualColumnCount;
+
+        // Add column headers (A, B, C, etc.)
+        for (let col = 1; col <= maxCol; col++) {
+          const th = document.createElement("th");
+          th.textContent = getColumnName(col);
+          headerRow.appendChild(th);
+        }
+        table.appendChild(headerRow);
+
+        // Add data rows
+        const maxRow = worksheet.actualRowCount;
+        for (let row = 1; row <= maxRow; row++) {
+          const tr = document.createElement("tr");
+
+          // Add row header (1, 2, 3, etc.)
+          const rowHeader = document.createElement("td");
+          rowHeader.textContent = row;
+          rowHeader.classList.add("row-header");
+          tr.appendChild(rowHeader);
+
+          for (let col = 1; col <= maxCol; col++) {
+            const td = document.createElement("td");
+            const cell = worksheet.getCell(row, col);
+
+            // Format the cell value
+            if (cell && cell.value !== null && cell.value !== undefined) {
+              if (cell.value.formula) {
+                td.textContent = cell.value.result || "";
+                td.title = `Formula: ${cell.value.formula}`;
+              } else if (cell.value.richText) {
+                td.textContent = cell.value.richText
+                  .map((r) => r.text)
+                  .join("");
+              } else if (cell.value.text) {
+                td.textContent = cell.value.text;
+              } else {
+                td.textContent = cell.text || cell.value.toString();
+              }
+            } else {
+              td.textContent = "";
+            }
+
+            // Store cell reference for highlighting
+            td.dataset.row = row;
+            td.dataset.col = col;
+            td.dataset.ref = `${getColumnName(col)}${row}`;
+
+            tr.appendChild(td);
+          }
+
+          table.appendChild(tr);
+        }
+
+        spreadsheetContent.innerHTML = "";
+        spreadsheetContent.appendChild(table);
+      }
+
+      // Get Excel-style column name (A, B, ..., Z, AA, AB, etc.)
+      function getColumnName(colNumber) {
+        let dividend = colNumber;
+        let columnName = "";
+        let modulo;
+
+        while (dividend > 0) {
+          modulo = (dividend - 1) % 26;
+          columnName = String.fromCharCode(65 + modulo) + columnName;
+          dividend = parseInt((dividend - modulo) / 26);
+        }
+
+        return columnName;
+      }
+
+      // Parse Excel-style cell reference to row/column numbers
+      function parseCellReference(cellRef) {
+        const match = cellRef.match(/([A-Z]+)([0-9]+)/);
+        if (!match) return null;
+
+        const colStr = match[1];
+        const rowNum = parseInt(match[2]);
+
+        let colNum = 0;
+        for (let i = 0; i < colStr.length; i++) {
+          colNum = colNum * 26 + (colStr.charCodeAt(i) - 64);
+        }
+
+        return { row: rowNum, col: colNum };
+      }
+
+      // Highlight cells based on reference
+      function highlightCells(cellRefs) {
+        // Clear previous highlights
+        document.querySelectorAll(".highlighted").forEach((cell) => {
+          cell.classList.remove("highlighted");
+        });
+
+        highlightedCells = Array.isArray(cellRefs) ? cellRefs : [cellRefs];
+
+        // For single cell reference
+        if (typeof cellRefs === "string") {
+          const cell = document.querySelector(`td[data-ref="${cellRefs}"]`);
+          if (cell) cell.classList.add("highlighted");
+          return;
+        }
+
+        // For range like 'A1:C3'
+        if (cellRefs.includes(":")) {
+          const [start, end] = cellRefs.split(":");
+          const startCell = parseCellReference(start);
+          const endCell = parseCellReference(end);
+
+          if (!startCell || !endCell) return;
+
+          for (let row = startCell.row; row <= endCell.row; row++) {
+            for (let col = startCell.col; col <= endCell.col; col++) {
+              const ref = `${getColumnName(col)}${row}`;
+              const cell = document.querySelector(`td[data-ref="${ref}"]`);
+              if (cell) cell.classList.add("highlighted");
+            }
+          }
+        }
+      }
+
+      // Get workbook metadata
+      function getWorkbookMetadata() {
+        const metadata = {
+          creator: workbook.creator || "",
+          lastModifiedBy: workbook.lastModifiedBy || "",
+          created: workbook.created,
+          modified: workbook.modified,
+          sheets: workbook.worksheets.map((sheet) => sheet.name),
+          active_sheet: currentSheetName,
+        };
+        return metadata;
+      }
+
+      // Register with MCP
+      registerMCPServer({
+        insertFrame: (frame) => {
+          document
+            .querySelector("#authorizationFrame .modal-content")
+            .appendChild(frame);
+        },
+        showAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "block";
+        },
+        hideAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "none";
+        },
+        name: "excel viewer",
+        version: "1.0.0",
+        tools: [
+          {
+            name: "get_workbook_metadata",
+            description:
+              "Get metadata about the Excel workbook, including the sheets and the active sheet.",
+            input_schema: {
+              type: "object",
+              properties: {},
+            },
+            async execute(sender, params) {
+              if (!workbook) {
+                return { error: "No workbook loaded" };
+              }
+
+              return getWorkbookMetadata();
+            },
+          },
+          {
+            name: "get_sheet_contents",
+            description: "Get the contents of a specific sheet.",
+            input_schema: {
+              type: "object",
+              properties: {
+                sheet_name: {
+                  type: "string",
+                  description: "Name of the sheet to read.",
+                },
+                range: {
+                  type: "string",
+                  description: "Optional Excel-style range (e.g., 'A1:C10').",
+                },
+              },
+              required: ["sheet_name"],
+            },
+            async execute(sender, params) {
+              if (!workbook) {
+                return { error: "No workbook loaded" };
+              }
+
+              const worksheet = workbook.getWorksheet(params.sheet_name);
+              if (!worksheet) {
+                return { error: "Sheet not found" };
+              }
+
+              // If we have a range, parse it
+              let startRow = 1;
+              let startCol = 1;
+              let endRow = worksheet.actualRowCount;
+              let endCol = worksheet.actualColumnCount;
+
+              if (params.range) {
+                const [start, end] = params.range.split(":");
+                const startCell = parseCellReference(start);
+                const endCell = parseCellReference(end || start);
+
+                if (startCell && endCell) {
+                  startRow = startCell.row;
+                  startCol = startCell.col;
+                  endRow = endCell.row;
+                  endCol = endCell.col;
+                }
+              }
+
+              // Build data array
+              const data = [];
+              for (let row = startRow; row <= endRow; row++) {
+                const rowData = [];
+                for (let col = startCol; col <= endCol; col++) {
+                  const cell = worksheet.getCell(row, col);
+                  let value = "";
+
+                  if (cell && cell.value !== null && cell.value !== undefined) {
+                    if (cell.value.formula) {
+                      value = cell.value.result || "";
+                    } else if (cell.value.richText) {
+                      value = cell.value.richText.map((r) => r.text).join("");
+                    } else if (cell.value.text) {
+                      value = cell.value.text;
+                    } else {
+                      value = cell.text || cell.value.toString();
+                    }
+                  }
+
+                  rowData.push(value);
+                }
+                data.push(rowData);
+              }
+
+              return {
+                data,
+                rows: data.length,
+                columns: data[0]?.length || 0,
+                range: `${getColumnName(startCol)}${startRow}:${getColumnName(
+                  endCol
+                )}${endRow}`,
+              };
+            },
+          },
+          {
+            name: "highlight_cells",
+            description:
+              "Highlight a cell or range of cells in the current sheet.",
+            input_schema: {
+              type: "object",
+              properties: {
+                reference: {
+                  type: "string",
+                  description:
+                    "Excel-style cell reference (e.g., 'A1' or 'A1:C10').",
+                },
+                sheet_name: {
+                  type: "string",
+                  description:
+                    "Optional sheet name to switch to before highlighting.",
+                },
+              },
+              required: ["reference"],
+            },
+            async execute(sender, params) {
+              if (!workbook) {
+                return { error: "No workbook loaded" };
+              }
+
+              // Switch sheet if specified
+              if (params.sheet_name && params.sheet_name !== currentSheetName) {
+                const worksheet = workbook.getWorksheet(params.sheet_name);
+                if (!worksheet) {
+                  return { error: "Sheet not found" };
+                }
+                loadSheet(params.sheet_name);
+              }
+
+              // Highlight the cells
+              highlightCells(params.reference);
+
+              return { success: true };
+            },
+          },
+        ],
+      });
+    </script>
+  </body>
+</html>
