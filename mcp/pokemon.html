@@ -1,0 +1,1205 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pokémon API Server</title>
+    <style>
+      body {
+        font-family: 'Arial', sans-serif;
+        line-height: 1.6;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #f7f7f7;
+      }
+      h1 {
+        color: #e3350d;
+        text-align: center;
+      }
+      h2 {
+        color: #3761a8;
+      }
+      #authorizationFrame {
+        background-color: #ffcb05;
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+      }
+      #dataBox {
+        background-color: white;
+        padding: 15px;
+        border-radius: 8px;
+        border: 1px solid #ddd;
+      }
+      .pokeball {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        background: radial-gradient(circle at 50% 50%, red 0%, red 38%, black 40%, black 44%, white 46%, white 100%);
+        border-radius: 50%;
+        margin-right: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1><span class="pokeball"></span>CADDR-MCP Pokémon API Server<span class="pokeball"></span></h1>
+    <p>A server that provides access to Pokémon data via the PokéAPI.</p>
+
+    <div id="authorizationFrame" style="display: none">
+      <h2>Authorization</h2>
+      <p>Please authorize this server to access Pokémon data.</p>
+    </div>
+
+    <div id="dataBox">
+      <h2>Available Endpoints</h2>
+      <ul>
+        <li><strong>Berries Group:</strong> berries, berry-firmnesses, berry-flavors</li>
+        <li><strong>Contests Group:</strong> contest-types, contest-effects, super-contest-effects</li>
+        <li><strong>Encounters Group:</strong> encounter-methods, encounter-conditions, encounter-condition-values</li>
+        <li><strong>Evolution Group:</strong> evolution-chains, evolution-triggers</li>
+        <li><strong>Games Group:</strong> generations, pokedexes, versions, version-groups</li>
+        <li><strong>Items Group:</strong> items, item-attributes, item-categories, item-fling-effects, item-pockets</li>
+        <li><strong>Locations Group:</strong> locations, location-areas, pal-park-areas, regions</li>
+        <li><strong>Machines Group:</strong> machines</li>
+        <li><strong>Moves Group:</strong> moves, move-ailments, move-battle-styles, move-categories, move-damage-classes, move-learn-methods, move-targets</li>
+        <li><strong>Pokémon Group:</strong> abilities, characteristics, egg-groups, genders, growth-rates, natures, pokeathlon-stats, pokemon, pokemon-colors, pokemon-forms, pokemon-habitats, pokemon-shapes, pokemon-species, stats, types</li>
+        <li><strong>Utility Group:</strong> languages</li>
+      </ul>
+    </div>
+    <script src="api.js"></script>
+
+    <script>
+      // Base URL for the PokéAPI
+      const POKEAPI_BASE_URL = 'https://pokeapi.co/api/v2';
+      
+      // Helper function to fetch data from the PokéAPI
+      async function fetchFromPokeAPI(endpoint) {
+        try {
+          const response = await fetch(`${POKEAPI_BASE_URL}/${endpoint}`);
+          if (!response.ok) {
+            throw new Error(`Error: ${response.status} ${response.statusText}`);
+          }
+          return await response.json();
+        } catch (error) {
+          console.error('Error fetching from PokéAPI:', error);
+          throw error;
+        }
+      }
+
+      // No formatting functions needed - we'll return raw data
+
+      registerMCPServer({
+        insertFrame: (frame) => {
+          document.getElementById("authorizationFrame").appendChild(frame);
+        },
+        showAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "block";
+        },
+        hideAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "none";
+        },
+        name: "pokemon api",
+        version: "1.0.0",
+        tools: [
+          // Berry Group Endpoints
+          {
+            name: "get_berry",
+            description: "Get information about a specific berry.",
+            input_schema: {
+              type: "object",
+              properties: {
+                berry: {
+                  type: "string",
+                  description: "The name or ID of the berry."
+                }
+              },
+              required: ["berry"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`berry/${params.berry.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve berry information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_berry_firmness",
+            description: "Get information about berry firmness.",
+            input_schema: {
+              type: "object",
+              properties: {
+                firmness: {
+                  type: "string",
+                  description: "The name or ID of the berry firmness."
+                }
+              },
+              required: ["firmness"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`berry-firmness/${params.firmness.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve berry firmness information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_berry_flavor",
+            description: "Get information about a berry flavor.",
+            input_schema: {
+              type: "object",
+              properties: {
+                flavor: {
+                  type: "string",
+                  description: "The name or ID of the berry flavor."
+                }
+              },
+              required: ["flavor"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`berry-flavor/${params.flavor.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve berry flavor information: ${error.message}` };
+              }
+            }
+          },
+
+          // Contest Group Endpoints
+          {
+            name: "get_contest_type",
+            description: "Get information about a contest type.",
+            input_schema: {
+              type: "object",
+              properties: {
+                type: {
+                  type: "string",
+                  description: "The name or ID of the contest type."
+                }
+              },
+              required: ["type"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`contest-type/${params.type.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve contest type information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_contest_effect",
+            description: "Get information about a contest effect.",
+            input_schema: {
+              type: "object",
+              properties: {
+                id: {
+                  type: "string",
+                  description: "The ID of the contest effect."
+                }
+              },
+              required: ["id"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`contest-effect/${params.id}`);
+              } catch (error) {
+                return { error: `Failed to retrieve contest effect information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_super_contest_effect",
+            description: "Get information about a super contest effect.",
+            input_schema: {
+              type: "object",
+              properties: {
+                id: {
+                  type: "string",
+                  description: "The ID of the super contest effect."
+                }
+              },
+              required: ["id"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`super-contest-effect/${params.id}`);
+              } catch (error) {
+                return { error: `Failed to retrieve super contest effect information: ${error.message}` };
+              }
+            }
+          },
+
+          // Encounters Group Endpoints
+          {
+            name: "get_encounter_method",
+            description: "Get information about an encounter method.",
+            input_schema: {
+              type: "object",
+              properties: {
+                method: {
+                  type: "string",
+                  description: "The name or ID of the encounter method."
+                }
+              },
+              required: ["method"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`encounter-method/${params.method.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve encounter method information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_encounter_condition",
+            description: "Get information about an encounter condition.",
+            input_schema: {
+              type: "object",
+              properties: {
+                condition: {
+                  type: "string",
+                  description: "The name or ID of the encounter condition."
+                }
+              },
+              required: ["condition"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`encounter-condition/${params.condition.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve encounter condition information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_encounter_condition_value",
+            description: "Get information about an encounter condition value.",
+            input_schema: {
+              type: "object",
+              properties: {
+                value: {
+                  type: "string",
+                  description: "The name or ID of the encounter condition value."
+                }
+              },
+              required: ["value"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`encounter-condition-value/${params.value.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve encounter condition value information: ${error.message}` };
+              }
+            }
+          },
+
+          // Evolution Group Endpoints
+          {
+            name: "get_evolution_chain",
+            description: "Get information about an evolution chain.",
+            input_schema: {
+              type: "object",
+              properties: {
+                id: {
+                  type: "string",
+                  description: "The ID of the evolution chain."
+                }
+              },
+              required: ["id"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`evolution-chain/${params.id}`);
+              } catch (error) {
+                return { error: `Failed to retrieve evolution chain information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_evolution_trigger",
+            description: "Get information about an evolution trigger.",
+            input_schema: {
+              type: "object",
+              properties: {
+                trigger: {
+                  type: "string",
+                  description: "The name or ID of the evolution trigger."
+                }
+              },
+              required: ["trigger"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`evolution-trigger/${params.trigger.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve evolution trigger information: ${error.message}` };
+              }
+            }
+          },
+
+          // Games Group Endpoints
+          {
+            name: "get_generation",
+            description: "Get information about a generation.",
+            input_schema: {
+              type: "object",
+              properties: {
+                generation: {
+                  type: "string",
+                  description: "The name or ID of the generation."
+                }
+              },
+              required: ["generation"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`generation/${params.generation.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve generation information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_pokedex",
+            description: "Get information about a Pokédex.",
+            input_schema: {
+              type: "object",
+              properties: {
+                pokedex: {
+                  type: "string",
+                  description: "The name or ID of the Pokédex."
+                }
+              },
+              required: ["pokedex"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`pokedex/${params.pokedex.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve Pokédex information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_version",
+            description: "Get information about a game version.",
+            input_schema: {
+              type: "object",
+              properties: {
+                version: {
+                  type: "string",
+                  description: "The name or ID of the game version."
+                }
+              },
+              required: ["version"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`version/${params.version.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve version information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_version_group",
+            description: "Get information about a version group.",
+            input_schema: {
+              type: "object",
+              properties: {
+                group: {
+                  type: "string",
+                  description: "The name or ID of the version group."
+                }
+              },
+              required: ["group"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`version-group/${params.group.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve version group information: ${error.message}` };
+              }
+            }
+          },
+
+          // Items Group Endpoints
+          {
+            name: "get_item",
+            description: "Get information about an item.",
+            input_schema: {
+              type: "object",
+              properties: {
+                item: {
+                  type: "string",
+                  description: "The name or ID of the item."
+                }
+              },
+              required: ["item"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`item/${params.item.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve item information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_item_attribute",
+            description: "Get information about an item attribute.",
+            input_schema: {
+              type: "object",
+              properties: {
+                attribute: {
+                  type: "string",
+                  description: "The name or ID of the item attribute."
+                }
+              },
+              required: ["attribute"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`item-attribute/${params.attribute.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve item attribute information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_item_category",
+            description: "Get information about an item category.",
+            input_schema: {
+              type: "object",
+              properties: {
+                category: {
+                  type: "string",
+                  description: "The name or ID of the item category."
+                }
+              },
+              required: ["category"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`item-category/${params.category.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve item category information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_item_fling_effect",
+            description: "Get information about an item fling effect.",
+            input_schema: {
+              type: "object",
+              properties: {
+                effect: {
+                  type: "string",
+                  description: "The name or ID of the item fling effect."
+                }
+              },
+              required: ["effect"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`item-fling-effect/${params.effect.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve item fling effect information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_item_pocket",
+            description: "Get information about an item pocket.",
+            input_schema: {
+              type: "object",
+              properties: {
+                pocket: {
+                  type: "string",
+                  description: "The name or ID of the item pocket."
+                }
+              },
+              required: ["pocket"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`item-pocket/${params.pocket.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve item pocket information: ${error.message}` };
+              }
+            }
+          },
+
+          // Locations Group Endpoints
+          {
+            name: "get_location",
+            description: "Get information about a location.",
+            input_schema: {
+              type: "object",
+              properties: {
+                location: {
+                  type: "string",
+                  description: "The name or ID of the location."
+                }
+              },
+              required: ["location"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`location/${params.location.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve location information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_location_area",
+            description: "Get information about a location area.",
+            input_schema: {
+              type: "object",
+              properties: {
+                area: {
+                  type: "string",
+                  description: "The name or ID of the location area."
+                }
+              },
+              required: ["area"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`location-area/${params.area.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve location area information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_pal_park_area",
+            description: "Get information about a Pal Park area.",
+            input_schema: {
+              type: "object",
+              properties: {
+                area: {
+                  type: "string",
+                  description: "The name or ID of the Pal Park area."
+                }
+              },
+              required: ["area"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`pal-park-area/${params.area.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve Pal Park area information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_region",
+            description: "Get information about a region.",
+            input_schema: {
+              type: "object",
+              properties: {
+                region: {
+                  type: "string",
+                  description: "The name or ID of the region."
+                }
+              },
+              required: ["region"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`region/${params.region.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve region information: ${error.message}` };
+              }
+            }
+          },
+
+          // Machine Group Endpoint
+          {
+            name: "get_machine",
+            description: "Get information about a machine.",
+            input_schema: {
+              type: "object",
+              properties: {
+                id: {
+                  type: "string",
+                  description: "The ID of the machine."
+                }
+              },
+              required: ["id"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`machine/${params.id}`);
+              } catch (error) {
+                return { error: `Failed to retrieve machine information: ${error.message}` };
+              }
+            }
+          },
+
+          // Moves Group Endpoints
+          {
+            name: "get_move",
+            description: "Get information about a move.",
+            input_schema: {
+              type: "object",
+              properties: {
+                move: {
+                  type: "string",
+                  description: "The name or ID of the move."
+                }
+              },
+              required: ["move"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`move/${params.move.toLowerCase().replace(/\s+/g, '-')}`);
+              } catch (error) {
+                return { error: `Failed to retrieve move information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_move_ailment",
+            description: "Get information about a move ailment.",
+            input_schema: {
+              type: "object",
+              properties: {
+                ailment: {
+                  type: "string",
+                  description: "The name or ID of the move ailment."
+                }
+              },
+              required: ["ailment"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`move-ailment/${params.ailment.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve move ailment information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_move_battle_style",
+            description: "Get information about a move battle style.",
+            input_schema: {
+              type: "object",
+              properties: {
+                style: {
+                  type: "string",
+                  description: "The name or ID of the move battle style."
+                }
+              },
+              required: ["style"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`move-battle-style/${params.style.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve move battle style information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_move_category",
+            description: "Get information about a move category.",
+            input_schema: {
+              type: "object",
+              properties: {
+                category: {
+                  type: "string",
+                  description: "The name or ID of the move category."
+                }
+              },
+              required: ["category"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`move-category/${params.category.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve move category information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_move_damage_class",
+            description: "Get information about a move damage class.",
+            input_schema: {
+              type: "object",
+              properties: {
+                class: {
+                  type: "string",
+                  description: "The name or ID of the move damage class."
+                }
+              },
+              required: ["class"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`move-damage-class/${params.class.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve move damage class information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_move_learn_method",
+            description: "Get information about a move learn method.",
+            input_schema: {
+              type: "object",
+              properties: {
+                method: {
+                  type: "string",
+                  description: "The name or ID of the move learn method."
+                }
+              },
+              required: ["method"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`move-learn-method/${params.method.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve move learn method information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_move_target",
+            description: "Get information about a move target.",
+            input_schema: {
+              type: "object",
+              properties: {
+                target: {
+                  type: "string",
+                  description: "The name or ID of the move target."
+                }
+              },
+              required: ["target"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`move-target/${params.target.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve move target information: ${error.message}` };
+              }
+            }
+          },
+
+          // Pokemon Group Endpoints
+          {
+            name: "get_ability",
+            description: "Get information about an ability.",
+            input_schema: {
+              type: "object",
+              properties: {
+                ability: {
+                  type: "string",
+                  description: "The name or ID of the ability."
+                }
+              },
+              required: ["ability"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`ability/${params.ability.toLowerCase().replace(/\s+/g, '-')}`);
+              } catch (error) {
+                return { error: `Failed to retrieve ability information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_characteristic",
+            description: "Get information about a characteristic.",
+            input_schema: {
+              type: "object",
+              properties: {
+                id: {
+                  type: "string",
+                  description: "The ID of the characteristic."
+                }
+              },
+              required: ["id"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`characteristic/${params.id}`);
+              } catch (error) {
+                return { error: `Failed to retrieve characteristic information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_egg_group",
+            description: "Get information about an egg group.",
+            input_schema: {
+              type: "object",
+              properties: {
+                group: {
+                  type: "string",
+                  description: "The name or ID of the egg group."
+                }
+              },
+              required: ["group"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`egg-group/${params.group.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve egg group information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_gender",
+            description: "Get information about a gender.",
+            input_schema: {
+              type: "object",
+              properties: {
+                gender: {
+                  type: "string",
+                  description: "The name or ID of the gender."
+                }
+              },
+              required: ["gender"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`gender/${params.gender.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve gender information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_growth_rate",
+            description: "Get information about a growth rate.",
+            input_schema: {
+              type: "object",
+              properties: {
+                rate: {
+                  type: "string",
+                  description: "The name or ID of the growth rate."
+                }
+              },
+              required: ["rate"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`growth-rate/${params.rate.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve growth rate information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_nature",
+            description: "Get information about a nature.",
+            input_schema: {
+              type: "object",
+              properties: {
+                nature: {
+                  type: "string",
+                  description: "The name or ID of the nature."
+                }
+              },
+              required: ["nature"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`nature/${params.nature.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve nature information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_pokeathlon_stat",
+            description: "Get information about a Pokeathlon stat.",
+            input_schema: {
+              type: "object",
+              properties: {
+                stat: {
+                  type: "string",
+                  description: "The name or ID of the Pokeathlon stat."
+                }
+              },
+              required: ["stat"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`pokeathlon-stat/${params.stat.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve Pokeathlon stat information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_pokemon",
+            description: "Get information about a Pokémon.",
+            input_schema: {
+              type: "object",
+              properties: {
+                pokemon: {
+                  type: "string",
+                  description: "The name or ID of the Pokémon."
+                }
+              },
+              required: ["pokemon"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`pokemon/${params.pokemon.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve Pokémon information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_pokemon_encounters",
+            description: "Get location encounter information for a Pokémon.",
+            input_schema: {
+              type: "object",
+              properties: {
+                pokemon: {
+                  type: "string",
+                  description: "The name or ID of the Pokémon."
+                }
+              },
+              required: ["pokemon"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`pokemon/${params.pokemon.toLowerCase()}/encounters`);
+              } catch (error) {
+                return { error: `Failed to retrieve Pokémon encounter information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_pokemon_color",
+            description: "Get information about a Pokémon color.",
+            input_schema: {
+              type: "object",
+              properties: {
+                color: {
+                  type: "string",
+                  description: "The name or ID of the Pokémon color."
+                }
+              },
+              required: ["color"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`pokemon-color/${params.color.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve Pokémon color information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_pokemon_form",
+            description: "Get information about a Pokémon form.",
+            input_schema: {
+              type: "object",
+              properties: {
+                form: {
+                  type: "string",
+                  description: "The name or ID of the Pokémon form."
+                }
+              },
+              required: ["form"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`pokemon-form/${params.form.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve Pokémon form information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_pokemon_habitat",
+            description: "Get information about a Pokémon habitat.",
+            input_schema: {
+              type: "object",
+              properties: {
+                habitat: {
+                  type: "string",
+                  description: "The name or ID of the Pokémon habitat."
+                }
+              },
+              required: ["habitat"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`pokemon-habitat/${params.habitat.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve Pokémon habitat information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_pokemon_shape",
+            description: "Get information about a Pokémon shape.",
+            input_schema: {
+              type: "object",
+              properties: {
+                shape: {
+                  type: "string",
+                  description: "The name or ID of the Pokémon shape."
+                }
+              },
+              required: ["shape"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`pokemon-shape/${params.shape.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve Pokémon shape information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_pokemon_species",
+            description: "Get information about a Pokémon species.",
+            input_schema: {
+              type: "object",
+              properties: {
+                species: {
+                  type: "string",
+                  description: "The name or ID of the Pokémon species."
+                }
+              },
+              required: ["species"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`pokemon-species/${params.species.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve Pokémon species information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_stat",
+            description: "Get information about a stat.",
+            input_schema: {
+              type: "object",
+              properties: {
+                stat: {
+                  type: "string",
+                  description: "The name or ID of the stat."
+                }
+              },
+              required: ["stat"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`stat/${params.stat.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve stat information: ${error.message}` };
+              }
+            }
+          },
+          {
+            name: "get_type",
+            description: "Get information about a type.",
+            input_schema: {
+              type: "object",
+              properties: {
+                type: {
+                  type: "string",
+                  description: "The name or ID of the type."
+                }
+              },
+              required: ["type"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`type/${params.type.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve type information: ${error.message}` };
+              }
+            }
+          },
+
+          // Utility Group Endpoint
+          {
+            name: "get_language",
+            description: "Get information about a language.",
+            input_schema: {
+              type: "object",
+              properties: {
+                language: {
+                  type: "string",
+                  description: "The name or ID of the language."
+                }
+              },
+              required: ["language"]
+            },
+            async execute(sender, params) {
+              try {
+                return await fetchFromPokeAPI(`language/${params.language.toLowerCase()}`);
+              } catch (error) {
+                return { error: `Failed to retrieve language information: ${error.message}` };
+              }
+            }
+          },
+          
+          // Resource Lists
+          {
+            name: "get_resource_list",
+            description: "Get a list of resources for a specific endpoint.",
+            input_schema: {
+              type: "object",
+              properties: {
+                endpoint: {
+                  type: "string",
+                  description: "The API endpoint to list resources for (e.g., 'pokemon', 'type', 'ability')."
+                },
+                limit: {
+                  type: "string",
+                  description: "The maximum number of resources to return (default: 20)."
+                },
+                offset: {
+                  type: "string",
+                  description: "The offset for pagination (default: 0)."
+                }
+              },
+              required: ["endpoint"]
+            },
+            async execute(sender, params) {
+              try {
+                let url = params.endpoint.toLowerCase();
+                const queryParams = [];
+                
+                if (params.limit) {
+                  queryParams.push(`limit=${params.limit}`);
+                }
+                
+                if (params.offset) {
+                  queryParams.push(`offset=${params.offset}`);
+                }
+                
+                if (queryParams.length > 0) {
+                  url += `?${queryParams.join('&')}`;
+                }
+                
+                return await fetchFromPokeAPI(url);
+              } catch (error) {
+                return { error: `Failed to retrieve resource list: ${error.message}` };
+              }
+            }
+          }
+        ]
+      });
+    </script>
+  </body>
+</html>
