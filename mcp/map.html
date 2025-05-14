@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>caddr.org Map</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Helvetica, Arial, sans-serif;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        overflow: hidden;
+      }
+      .header {
+        background-color: #f0f0f0;
+        padding: 8px 16px;
+        border-bottom: 1px solid #ddd;
+        font-size: 14px;
+        color: #333;
+        display: flex;
+        align-items: center;
+      }
+      .header h1 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 500;
+      }
+      #map {
+        width: 100%;
+        flex: 1;
+      }
+      .modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.4);
+      }
+      .modal-content {
+        background-color: white;
+        margin: 15% auto;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        width: 50%;
+      }
+      #dataBox {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <h1>CADDR-MCP Map Server</h1>
+    </div>
+
+    <div id="authorizationFrame" class="modal">
+      <div class="modal-content">
+        <h2>Authorization</h2>
+        <p>Please authorize this server to access your map data.</p>
+      </div>
+    </div>
+
+    <div id="map"></div>
+
+    <div id="dataBox"></div>
+    <script src="api.js"></script>
+    <!-- Leaflet JS -->
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+
+    <script>
+      // Initialize the map
+      const map = L.map("map").setView([51.505, -0.09], 13);
+
+      // Add OpenStreetMap tile layer
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution:
+          '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      }).addTo(map);
+
+      // Map objects storage
+      const mapObjects = {
+        markers: {},
+        polygons: {},
+        circles: {},
+        popups: {},
+      };
+
+      // Generate unique IDs for map objects
+      let nextId = 1;
+      function generateId() {
+        return `obj_${nextId++}`;
+      }
+
+      registerMCPServer({
+        insertFrame: (frame) => {
+          document
+            .querySelector("#authorizationFrame .modal-content")
+            .appendChild(frame);
+        },
+        showAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "block";
+        },
+        hideAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "none";
+        },
+        name: "leaflet map",
+        version: "1.0.0",
+        tools: [
+          {
+            name: "get_map_view",
+            description: "Get the current map view coordinates and zoom level.",
+            input_schema: {
+              type: "object",
+              properties: {},
+            },
+            async execute(sender, params) {
+              const center = map.getCenter();
+              return {
+                latitude: center.lat,
+                longitude: center.lng,
+                zoom: map.getZoom(),
+                bounds: map.getBounds(),
+              };
+            },
+          },
+          {
+            name: "set_map_view",
+            description:
+              "Set the map view to specific coordinates and zoom level.",
+            input_schema: {
+              type: "object",
+              properties: {
+                latitude: {
+                  type: "number",
+                  description: "Latitude coordinate",
+                },
+                longitude: {
+                  type: "number",
+                  description: "Longitude coordinate",
+                },
+                zoom: {
+                  type: "number",
+                  description: "Zoom level",
+                },
+              },
+              required: ["latitude", "longitude"],
+            },
+            async execute(sender, params) {
+              const zoom = params.zoom || map.getZoom();
+              map.setView([params.latitude, params.longitude], zoom);
+              return { success: true };
+            },
+          },
+          {
+            name: "set_map_bounds",
+            description: "Set the map view to show a specific bounding box.",
+            input_schema: {
+              type: "object",
+              properties: {
+                north: {
+                  type: "number",
+                  description: "Northern latitude boundary",
+                },
+                south: {
+                  type: "number",
+                  description: "Southern latitude boundary",
+                },
+                east: {
+                  type: "number",
+                  description: "Eastern longitude boundary",
+                },
+                west: {
+                  type: "number",
+                  description: "Western longitude boundary",
+                },
+                padding: {
+                  type: "number",
+                  description: "Padding in pixels",
+                },
+              },
+              required: ["north", "south", "east", "west"],
+            },
+            async execute(sender, params) {
+              const bounds = L.latLngBounds(
+                [params.south, params.west],
+                [params.north, params.east]
+              );
+              const options = params.padding
+                ? { padding: [params.padding, params.padding] }
+                : {};
+              map.fitBounds(bounds, options);
+              return { success: true };
+            },
+          },
+          {
+            name: "add_marker",
+            description: "Add a marker to the map at specified coordinates.",
+            input_schema: {
+              type: "object",
+              properties: {
+                latitude: {
+                  type: "number",
+                  description: "Latitude coordinate",
+                },
+                longitude: {
+                  type: "number",
+                  description: "Longitude coordinate",
+                },
+                popup_content: {
+                  type: "string",
+                  description: "HTML content for the popup (optional)",
+                },
+                draggable: {
+                  type: "boolean",
+                  description: "Whether the marker is draggable (optional)",
+                },
+              },
+              required: ["latitude", "longitude"],
+            },
+            async execute(sender, params) {
+              const markerOptions = {};
+              if (params.draggable) {
+                markerOptions.draggable = true;
+              }
+
+              const marker = L.marker(
+                [params.latitude, params.longitude],
+                markerOptions
+              ).addTo(map);
+
+              if (params.popup_content) {
+                marker.bindPopup(params.popup_content);
+              }
+
+              const id = generateId();
+              mapObjects.markers[id] = marker;
+
+              return {
+                id: id,
+                latitude: params.latitude,
+                longitude: params.longitude,
+              };
+            },
+          },
+          {
+            name: "add_circle",
+            description: "Add a circle to the map at specified coordinates.",
+            input_schema: {
+              type: "object",
+              properties: {
+                latitude: {
+                  type: "number",
+                  description: "Latitude coordinate",
+                },
+                longitude: {
+                  type: "number",
+                  description: "Longitude coordinate",
+                },
+                radius: {
+                  type: "number",
+                  description: "Radius in meters",
+                },
+                color: {
+                  type: "string",
+                  description: "Border color (optional)",
+                },
+                fill_color: {
+                  type: "string",
+                  description: "Fill color (optional)",
+                },
+                fill_opacity: {
+                  type: "number",
+                  description: "Fill opacity (optional, 0-1)",
+                },
+                popup_content: {
+                  type: "string",
+                  description: "HTML content for the popup (optional)",
+                },
+              },
+              required: ["latitude", "longitude", "radius"],
+            },
+            async execute(sender, params) {
+              const options = {};
+
+              if (params.color) options.color = params.color;
+              if (params.fill_color) options.fillColor = params.fill_color;
+              if (params.fill_opacity !== undefined)
+                options.fillOpacity = params.fill_opacity;
+
+              const circle = L.circle([params.latitude, params.longitude], {
+                ...options,
+                radius: params.radius,
+              }).addTo(map);
+
+              if (params.popup_content) {
+                circle.bindPopup(params.popup_content);
+              }
+
+              const id = generateId();
+              mapObjects.circles[id] = circle;
+
+              return {
+                id: id,
+                latitude: params.latitude,
+                longitude: params.longitude,
+                radius: params.radius,
+              };
+            },
+          },
+          {
+            name: "add_polygon",
+            description: "Add a polygon to the map.",
+            input_schema: {
+              type: "object",
+              properties: {
+                coordinates: {
+                  type: "array",
+                  description:
+                    "Array of [latitude, longitude] coordinate pairs",
+                  items: {
+                    type: "array",
+                    items: { type: "number" },
+                    minItems: 2,
+                    maxItems: 2,
+                  },
+                },
+                color: {
+                  type: "string",
+                  description: "Border color (optional)",
+                },
+                fill_color: {
+                  type: "string",
+                  description: "Fill color (optional)",
+                },
+                fill_opacity: {
+                  type: "number",
+                  description: "Fill opacity (optional, 0-1)",
+                },
+                popup_content: {
+                  type: "string",
+                  description: "HTML content for the popup (optional)",
+                },
+              },
+              required: ["coordinates"],
+            },
+            async execute(sender, params) {
+              const options = {};
+
+              if (params.color) options.color = params.color;
+              if (params.fill_color) options.fillColor = params.fill_color;
+              if (params.fill_opacity !== undefined)
+                options.fillOpacity = params.fill_opacity;
+
+              const polygon = L.polygon(params.coordinates, options).addTo(map);
+
+              if (params.popup_content) {
+                polygon.bindPopup(params.popup_content);
+              }
+
+              const id = generateId();
+              mapObjects.polygons[id] = polygon;
+
+              return {
+                id: id,
+                coordinates: params.coordinates,
+              };
+            },
+          },
+          {
+            name: "remove_object",
+            description: "Remove an object from the map by its ID.",
+            input_schema: {
+              type: "object",
+              properties: {
+                id: {
+                  type: "string",
+                  description: "ID of the object to remove",
+                },
+              },
+              required: ["id"],
+            },
+            async execute(sender, params) {
+              const id = params.id;
+              let removed = false;
+
+              for (const type in mapObjects) {
+                if (mapObjects[type][id]) {
+                  map.removeLayer(mapObjects[type][id]);
+                  delete mapObjects[type][id];
+                  removed = true;
+                  break;
+                }
+              }
+
+              return {
+                success: removed,
+                error: removed ? null : "Object not found",
+              };
+            },
+          },
+          {
+            name: "clear_map",
+            description: "Remove all objects from the map.",
+            input_schema: {
+              type: "object",
+              properties: {
+                keep_base_layer: {
+                  type: "boolean",
+                  description:
+                    "Whether to keep the base tile layer (default: true)",
+                },
+              },
+            },
+            async execute(sender, params) {
+              // Clear all custom objects
+              for (const type in mapObjects) {
+                for (const id in mapObjects[type]) {
+                  map.removeLayer(mapObjects[type][id]);
+                }
+                mapObjects[type] = {};
+              }
+
+              // Re-initialize count
+              nextId = 1;
+
+              return { success: true };
+            },
+          },
+          {
+            name: "create_popup",
+            description: "Create a standalone popup at specified coordinates.",
+            input_schema: {
+              type: "object",
+              properties: {
+                latitude: {
+                  type: "number",
+                  description: "Latitude coordinate",
+                },
+                longitude: {
+                  type: "number",
+                  description: "Longitude coordinate",
+                },
+                content: {
+                  type: "string",
+                  description: "HTML content for the popup",
+                },
+                open_immediately: {
+                  type: "boolean",
+                  description: "Whether to open the popup immediately",
+                },
+              },
+              required: ["latitude", "longitude", "content"],
+            },
+            async execute(sender, params) {
+              const popup = L.popup()
+                .setLatLng([params.latitude, params.longitude])
+                .setContent(params.content);
+
+              if (params.open_immediately) {
+                popup.openOn(map);
+              }
+
+              const id = generateId();
+              mapObjects.popups[id] = popup;
+
+              return {
+                id: id,
+                latitude: params.latitude,
+                longitude: params.longitude,
+              };
+            },
+          },
+        ],
+      });
+    </script>
+  </body>
+</html>
