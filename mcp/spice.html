@@ -6,12 +6,13 @@
     <title>CADDR-MCP NGSpice Server</title>
     <style>
       body {
-        font-family: Arial, sans-serif;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
         margin: 0;
         padding: 20px;
         line-height: 1.6;
+        color: #333;
       }
-      h1 {
+      h1, h2 {
         color: #333;
       }
       #authorizationFrame {
@@ -26,17 +27,36 @@
         border: 1px solid #ddd;
         border-radius: 5px;
         background-color: #f8f8f8;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
       }
       #loadingIndicator {
         display: none;
         color: #0066cc;
-        margin-top: 10px;
+        padding-left: 10px;
+      }
+      .status-indicator {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        margin-right: 5px;
+      }
+      .status-ready {
+        background-color: #4CAF50;
+      }
+      .status-loading {
+        background-color: #FFC107;
+      }
+      .status-error {
+        background-color: #F44336;
       }
     </style>
   </head>
   <body>
     <h1>CADDR-MCP NGSpice Simulation Server</h1>
-    <p>This server provides circuit simulation capabilities using NGSpice running in WebAssembly.</p>
+    <p>This server provides circuit simulation capabilities using NGSpice running in WebAssembly with Web Workers.</p>
 
     <div id="authorizationFrame" style="display: none">
       <h2>Authorization</h2>
@@ -44,228 +64,315 @@
     </div>
 
     <div id="statusBox">
-      NGSpice server status: <span id="status">Ready</span>
-      <div id="loadingIndicator">Loading NGSpice WASM module...</div>
+      <div>
+        <span class="status-indicator status-ready" id="statusDot"></span>
+        NGSpice server status: <span id="status">Ready</span>
+      </div>
+      <div id="loadingIndicator">Loading resources...</div>
     </div>
 
     <script src="api.js"></script>
 
     <script>
+      // Constants
+      const BASE_URL = 'https://danchitnis.github.io/ngspice/emcc/build/';
+      const JS_URL = BASE_URL + 'ngspice.js';
+      const WASM_URL = BASE_URL + 'ngspice.wasm';
+      
       // Global variables
-      let ngspiceLoaded = false;
-      let ngspiceOutput = "";
+      let jsSource = null;
+      let wasmBinary = null;
+      let resourcesLoaded = false;
+      let isLoading = false;
       
-      // Function to load NGSpice script
-      function loadNgspiceScript() {
-        return new Promise((resolve, reject) => {
-          const script = document.createElement('script');
-          script.src = "https://danchitnis.github.io/ngspice/emcc/build/ngspice.js";
-          script.async = true;
-          script.onload = () => resolve();
-          script.onerror = () => reject(new Error('Failed to load NGSpice script'));
-          document.body.appendChild(script);
-        });
-      }
+      // UI Elements
+      const statusElement = document.getElementById('status');
+      const statusDot = document.getElementById('statusDot');
+      const loadingIndicator = document.getElementById('loadingIndicator');
       
-      // Initialize NGSpice module
-      function initNgspiceModule() {
-        return new Promise((resolve, reject) => {
-          // Configure Module
-          window.Module = {
-            noInitialRun: true,
-            noExitRuntime: true,
-            arguments: ["-b"],
-            preRun: [],
-            postRun: [() => {
-              console.log("NGSpice initialized");
-              ngspiceLoaded = true;
-              resolve();
-            }],
-            print: text => {
-              console.log(text);
-              ngspiceOutput += text + "\n";
-            },
-            printErr: text => {
-              console.error(text);
-              ngspiceOutput += "ERROR: " + text + "\n";
-            },
-            stdin: () => null,
-            canvas: (() => {
-              const canvas = document.createElement('canvas');
-              canvas.style.display = 'none';
-              return canvas;
-            })(),
-            onRuntimeInitialized: () => {
-              console.log("Runtime initialized");
-            },
-            onAbort: what => {
-              console.error("NGSpice aborted:", what);
-              reject(what);
-            }
-          };
-          
-          // Load custom bindings for NGSpice
-          window.NG_POST_RUN = [];
-          window.runNgSpice = function(netlist) {
-            try {
-              // Create a file with the netlist
-              const filename = "/ngspice_input.cir";
-              FS.writeFile(filename, netlist);
-              
-              // Run NGSpice
-              Module.arguments = ["-b", filename];
-              
-              // Try different methods
-              if (typeof Module.callMain === 'function') {
-                Module.callMain(Module.arguments);
-              } else if (typeof Module._main === 'function') {
-                Module._main(Module.arguments.length, Module.arguments);
-              } else {
-                Module.run(Module.arguments);
-              }
-              
-              return true;
-            } catch (e) {
-              console.error("Error running NGSpice:", e);
-              return false;
-            }
-          };
-          
-          // Load NGSpice script
-          loadNgspiceScript().catch(reject);
-        });
-      }
-      
-      // Run a simulation
-      async function runSimulation(netlist, modelFiles = {}) {
-        const statusElement = document.getElementById("status");
-        const loadingIndicator = document.getElementById("loadingIndicator");
+      // Set UI status
+      function setStatus(status, isLoading = false) {
+        statusElement.textContent = status;
         
-        // Initialize if not already loaded
-        if (!ngspiceLoaded) {
-          statusElement.textContent = "Loading...";
-          loadingIndicator.style.display = "block";
-          
-          try {
-            await initNgspiceModule();
-            statusElement.textContent = "Ready";
-          } catch (error) {
-            statusElement.textContent = "Error loading NGSpice";
-            loadingIndicator.style.display = "none";
-            return { error: "Failed to initialize NGSpice: " + error };
-          }
-          
-          loadingIndicator.style.display = "none";
+        // Update status indicator
+        statusDot.className = 'status-indicator';
+        if (status === 'Ready') {
+          statusDot.classList.add('status-ready');
+        } else if (isLoading) {
+          statusDot.classList.add('status-loading');
+        } else {
+          statusDot.classList.add('status-error');
         }
         
-        // Run simulation
+        // Show/hide loading indicator
+        loadingIndicator.style.display = isLoading ? 'block' : 'none';
+      }
+      
+      // Prefetch the JS and WASM files
+      async function prefetchResources() {
+        if (resourcesLoaded || isLoading) return;
+        
+        isLoading = true;
+        setStatus('Loading resources...', true);
+        
         try {
-          statusElement.textContent = "Running simulation...";
-          ngspiceOutput = "";
-          
-          console.log("Writing netlist file");
-          FS.writeFile("/sim.cir", netlist);
-          
-          // Write model files
-          for (const [filename, content] of Object.entries(modelFiles)) {
-            console.log(`Writing model file: ${filename}`);
-            FS.writeFile("/" + filename, content);
+          // Fetch JS source
+          const jsResponse = await fetch(JS_URL, { mode: 'cors' });
+          if (!jsResponse.ok) {
+            throw new Error(`Failed to fetch JavaScript: ${jsResponse.status}`);
           }
+          jsSource = await jsResponse.text();
           
-          // Run a test circuit first to make sure NGSpice is working
-          console.log("Running test circuit...");
-          const testNetlist = `Test RC Circuit
-R1 1 2 1k
-C1 2 0 1u
-V1 1 0 DC 5
-.tran 1u 10u
-.control
-run
-.endc
-.end`;
-          
-          try {
-            console.log("Executing test simulation...");
-            const testResult = window.runNgSpice(testNetlist);
-            console.log("Test result:", testResult, "Output:", ngspiceOutput);
-          } catch (e) {
-            console.error("Test circuit execution error:", e);
+          // Fetch WASM binary
+          const wasmResponse = await fetch(WASM_URL, { mode: 'cors' });
+          if (!wasmResponse.ok) {
+            throw new Error(`Failed to fetch WASM: ${wasmResponse.status}`);
           }
+          wasmBinary = await wasmResponse.arrayBuffer();
           
-          // Clear output for the real simulation
-          ngspiceOutput = "";
-          
-          // Run the actual simulation
-          console.log("Running actual simulation...");
-          try {
-            const simResult = window.runNgSpice(netlist);
-            console.log("Simulation result:", simResult, "Output:", ngspiceOutput);
-          } catch (e) {
-            console.error("Simulation execution error:", e);
-            ngspiceOutput += "ERROR: " + e.toString() + "\n";
+          resourcesLoaded = true;
+          setStatus('Ready');
+          console.log('NGSpice resources loaded successfully');
+        } catch (error) {
+          setStatus('Error: ' + error.message);
+          console.error('Failed to load NGSpice resources:', error);
+        } finally {
+          isLoading = false;
+        }
+      }
+      
+      // Run a SPICE simulation in a Web Worker
+      async function runSpiceSimulation(netlist, modelFiles = {}) {
+        // Make sure resources are loaded
+        if (!resourcesLoaded) {
+          await prefetchResources();
+          if (!resourcesLoaded) {
+            return { error: 'Failed to load NGSpice resources' };
           }
-          
-          // Check for output files
-          const files = FS.readdir("/");
-          console.log("Files after simulation:", files);
-          
-          // Process results
-          const results = {
-            output: ngspiceOutput,
-            success: exitCode === 0,
-            exitCode: exitCode
+        }
+        
+        setStatus('Running simulation...', true);
+        
+        // Make a copy of the WASM binary to avoid the "detached ArrayBuffer" issue
+        const wasmBinaryCopy = wasmBinary.slice(0);
+        
+        return new Promise((resolve) => {
+          let output = '';
+          let errorMessages = '';
+          let simulationResult = {
+            success: false,
+            output: '',
+            files: {}
           };
           
-          // Check for raw files or other output
-          try {
-            const outputFiles = files.filter(f => 
-              f !== "sim.cir" && 
-              f !== "test.cir" && 
-              !f.startsWith("modelcard") && 
-              f !== "." && 
-              f !== "..");
-            
-            if (outputFiles.length > 0) {
-              results.files = {};
+          // Create Worker source
+          const workerSource = `
+            self.onmessage = e => {
+              const { netlist, modelFiles, jsCode, wasmBuf, baseUrl } = e.data;
               
-              for (const file of outputFiles) {
-                try {
-                  // Try reading as text first
-                  const content = FS.readFile("/" + file, { encoding: 'utf8' });
-                  results.files[file] = content;
-                } catch (e) {
-                  // If that fails, read as binary and convert to base64
+              // Create a URL from the JS source
+              const jsUrl = URL.createObjectURL(new Blob([jsCode], { type: 'application/javascript' }));
+              
+              // Configure Module
+              self.Module = {
+                noInitialRun: true,
+                noExitRuntime: true,
+                wasmBinary: wasmBuf,
+                locateFile: filename => filename.endsWith('.wasm') ? baseUrl + filename : filename,
+                print: text => self.postMessage({ type: 'stdout', line: text }),
+                printErr: text => self.postMessage({ type: 'stderr', line: text }),
+                onRuntimeInitialized() {
                   try {
-                    const binaryContent = FS.readFile("/" + file, { encoding: 'binary' });
+                    // Get file system module
+                    const FS = Module.FS || self.FS;
+                    if (!FS) throw new Error('File system not available');
+                    
+                    // Write the main netlist
+                    FS.writeFile('/sim.cir', netlist);
+                    
+                    // Write model files
+                    for (const [filename, content] of Object.entries(modelFiles)) {
+                      FS.writeFile('/' + filename, content);
+                    }
+                    
+                    // Run the simulation
+                    self.postMessage({ type: 'status', message: 'Running simulation...' });
+                    
+                    if (Module.callMain) {
+                      Module.callMain(['-b', '/sim.cir']);
+                    } else {
+                      // Alternative method for older Emscripten builds
+                      const toC = str => {
+                        const buf = new TextEncoder().encode(str + '\\0');
+                        const ptr = Module._malloc(buf.length);
+                        Module.HEAPU8.set(buf, ptr);
+                        return ptr;
+                      };
+                      
+                      const args = ['ngspice', '-b', '/sim.cir'];
+                      const argc = args.length;
+                      const argv = Module._malloc((argc + 1) * 4);
+                      const heap = Module.HEAPU32;
+                      const base = argv >>> 2;
+                      
+                      args.forEach((arg, i) => {
+                        heap[base + i] = toC(arg);
+                      });
+                      heap[base + argc] = 0;
+                      
+                      Module._main(argc, argv);
+                    }
+                    
+                    // Look for output files
+                    self.postMessage({ type: 'status', message: 'Processing results...' });
+                    
+                    const files = FS.readdir('/');
+                    const outputFiles = {};
+                    
+                    // Process regular output files
+                    for (const file of files) {
+                      if (file === '.' || file === '..' || file === 'sim.cir') continue;
+                      
+                      try {
+                        // Try to read as text first
+                        const content = FS.readFile('/' + file, { encoding: 'utf8' });
+                        outputFiles[file] = { type: 'text', content };
+                      } catch (e) {
+                        try {
+                          // Try binary if text fails
+                          const binaryContent = FS.readFile('/' + file);
+                          outputFiles[file] = { type: 'binary', content: Array.from(binaryContent) };
+                        } catch (e2) {
+                          self.postMessage({ 
+                            type: 'warning', 
+                            message: 'Failed to read file: ' + file + ': ' + e2.message 
+                          });
+                        }
+                      }
+                    }
+                    
+                    // Simulation complete
+                    self.postMessage({ type: 'complete', files: outputFiles });
+                  } catch (error) {
+                    self.postMessage({ type: 'error', message: error.message, stack: error.stack });
+                  }
+                }
+              };
+              
+              // Load the NGSpice JavaScript
+              try {
+                importScripts(jsUrl);
+              } catch (error) {
+                self.postMessage({ type: 'error', message: 'Failed to load NGSpice: ' + error.message });
+              }
+            };
+          `;
+          
+          // Create and start the worker
+          const workerBlob = new Blob([workerSource], { type: 'application/javascript' });
+          const worker = new Worker(URL.createObjectURL(workerBlob));
+          
+          // Handle worker messages
+          worker.onmessage = ({ data }) => {
+            switch (data.type) {
+              case 'stdout':
+                output += data.line + '\n';
+                break;
+                
+              case 'stderr':
+                errorMessages += data.line + '\n';
+                output += 'ERROR: ' + data.line + '\n';
+                break;
+                
+              case 'status':
+                console.log('Worker status:', data.message);
+                break;
+                
+              case 'warning':
+                console.warn('Worker warning:', data.message);
+                output += 'WARNING: ' + data.message + '\n';
+                break;
+                
+              case 'error':
+                console.error('Worker error:', data.message);
+                errorMessages += data.message + '\n';
+                output += 'ERROR: ' + data.message + '\n';
+                if (data.stack) {
+                  console.error('Stack:', data.stack);
+                }
+                
+                // Terminate worker and resolve with error
+                worker.terminate();
+                setStatus('Ready');
+                resolve({ 
+                  success: false, 
+                  error: data.message,
+                  output: output 
+                });
+                break;
+                
+              case 'complete':
+                console.log('Simulation completed successfully');
+                
+                // Process files
+                const files = {};
+                for (const [filename, fileData] of Object.entries(data.files)) {
+                  if (fileData.type === 'text') {
+                    files[filename] = fileData.content;
+                  } else if (fileData.type === 'binary') {
+                    // Convert array back to binary
+                    const binary = new Uint8Array(fileData.content);
+                    // Convert to base64 for transport
                     const base64 = btoa(
-                      Array.from(new Uint8Array(binaryContent))
+                      Array.from(binary)
                         .map(b => String.fromCharCode(b))
                         .join('')
                     );
-                    results.files[file] = base64;
-                  } catch (e2) {
-                    console.error(`Failed to read file ${file}:`, e2);
+                    files[filename] = base64;
                   }
                 }
-              }
+                
+                // Simulation result
+                simulationResult = {
+                  success: true,
+                  output: output,
+                  files: files
+                };
+                
+                // Terminate worker and resolve
+                worker.terminate();
+                setStatus('Ready');
+                resolve(simulationResult);
+                break;
             }
-          } catch (error) {
-            console.warn("Error reading output files:", error);
-          }
-          
-          statusElement.textContent = "Ready";
-          return results;
-          
-        } catch (error) {
-          console.error("Simulation error:", error);
-          statusElement.textContent = "Error";
-          return { 
-            error: "Simulation failed: " + error, 
-            output: ngspiceOutput 
           };
-        }
+          
+          // Handle worker errors
+          worker.onerror = (error) => {
+            console.error('Worker error:', error);
+            worker.terminate();
+            setStatus('Ready');
+            resolve({ 
+              success: false, 
+              error: 'Worker error: ' + error.message,
+              output: output + '\nERROR: ' + error.message
+            });
+          };
+          
+          // Send data to worker
+          worker.postMessage(
+            {
+              netlist,
+              modelFiles,
+              jsCode: jsSource,
+              wasmBuf: wasmBinaryCopy,
+              baseUrl: BASE_URL
+            },
+            [wasmBinaryCopy] // Transfer the WASM binary to the worker
+          );
+        });
       }
-
+      
       // Register the MCP server
       registerMCPServer({
         insertFrame: (frame) => {
@@ -299,10 +406,25 @@ run
               required: ["netlist"]
             },
             async execute(sender, params) {
-              return await runSimulation(params.netlist, params.modelFiles || {});
+              try {
+                return await runSpiceSimulation(params.netlist, params.modelFiles || {});
+              } catch (error) {
+                console.error("Error executing simulation:", error);
+                return { 
+                  success: false,
+                  error: "Failed to run simulation: " + error.message,
+                  output: "ERROR: " + error.message + "\n" + (error.stack || "")
+                };
+              }
             }
           }
         ]
+      });
+      
+      // Prefetch resources on page load
+      window.addEventListener('load', () => {
+        // Start prefetching in the background
+        prefetchResources().catch(console.error);
       });
     </script>
   </body>
