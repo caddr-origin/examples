@@ -322,7 +322,7 @@ async function registerMCPServer(info) {
   }
   const describeServer = () => JSON.parse(JSON.stringify(info));
   Object.assign(requestHandlers, {
-    showAuthorizationFrame: info.showAuthorizationFrame,
+    showAuthorizationPrompt: info.showAuthorizationFrame,
     async gimmeStuff(sender) {
       await NOTIFY(sender.from, "addServer", describeServer());
     },
@@ -357,9 +357,7 @@ async function registerMCPClient(info) {
       serverState = {};
       await NOTIFY("*", "gimmeStuff", null);
     },
-    showAuthorizationPrompt() {
-      info.showAuthorizationFrame();
-    },
+    showAuthorizationPrompt: info.showAuthorizationFrame,
     async onConnect(sender, params) {
       if (sender.from === "") {
         hasBroadcastChannel = params.hasBroadcastChannel;
