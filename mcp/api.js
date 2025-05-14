@@ -185,7 +185,7 @@ function handleMessage(data) {
     };
     senders[data.from] = sender;
     const forceTunnel = ["connectRTC", "addICE"].includes(data.method);
-    requestHandlers[data.method](sender, data.params).then(
+    Promise.resolve(requestHandlers[data.method](sender, data.params)).then(
       (result) => {
         if (data.id) {
           sendRPCMessage(
