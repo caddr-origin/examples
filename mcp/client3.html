@@ -219,6 +219,7 @@
         display: flex;
         flex-direction: column;
         margin-bottom: 0.75rem;
+        white-space: pre-wrap;
       }
 
       .message-header {
@@ -249,6 +250,23 @@
 
       .tool-status {
         margin-left: auto;
+        display: flex;
+        align-items: center;
+      }
+
+      .tool-rerun-button {
+        margin-left: 8px;
+        background-color: var(--primary-color);
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.75rem;
+        padding: 3px 6px;
+      }
+
+      .tool-rerun-button:hover {
+        opacity: 0.9;
       }
 
       /* Spinner animation for tool in progress */
@@ -894,6 +912,96 @@
         }
       }
 
+      // Create a list of tools from all servers
+      function getAllTools() {
+        const toolsList = Object.values(state.servers).flatMap(
+          (serverInfo) => serverInfo.tools || []
+        );
+
+        // Ensure all tools have proper parameter schemas
+        return toolsList.map(normalizeToolParameters);
+      }
+
+      // Re-run a tool call without triggering the LLM
+      async function rerunToolCall(
+        toolName,
+        toolInput,
+        parentContainer,
+        toolInteraction
+      ) {
+        // Find the server and tool
+        let toolServer = null;
+        let toolInfo = null;
+
+        for (const [serverId, serverInfo] of Object.entries(state.servers)) {
+          if (serverInfo.tools) {
+            const matchingTool = serverInfo.tools.find(
+              (tool) => tool.name === toolName
+            );
+            if (matchingTool) {
+              toolServer = serverId;
+              toolInfo = matchingTool;
+              break;
+            }
+          }
+        }
+
+        if (!toolServer || !toolInfo) {
+          console.error(`Tool ${toolName} not found in any server`);
+          alert(`Error: Tool ${toolName} not found in any available server`);
+          return;
+        }
+
+        try {
+          // Update UI to show loading
+          const statusSpan = toolInteraction.querySelector(".tool-status");
+          statusSpan.innerHTML = '<div class="tool-loading"></div>';
+
+          // Generate a unique ID for this re-run
+          const rerunId = `rerun-${Date.now()}-${Math.floor(
+            Math.random() * 1000
+          )}`;
+
+          // Call the tool using RPC
+          const result = await RPC(toolServer, toolName, toolInput);
+
+          // Remove old tool result if it exists
+          const oldResult = toolInteraction.querySelector(".tool-result");
+          if (oldResult) {
+            oldResult.remove();
+          }
+
+          // Add the new result to UI but don't scroll
+          addToolResultToUI(result, parentContainer, false);
+
+          console.log(`Re-ran tool ${toolName} successfully:`, result);
+        } catch (error) {
+          console.error(`Error re-running tool ${toolName}:`, error);
+
+          // Update UI to show error
+          const statusSpan = toolInteraction.querySelector(".tool-status");
+          statusSpan.innerHTML = '<span style="color:red;">❌</span>';
+
+          // Create re-run button again
+          const rerunButton = document.createElement("button");
+          rerunButton.className = "tool-rerun-button";
+          rerunButton.textContent = "Re-run";
+          rerunButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            rerunToolCall(
+              toolName,
+              toolInput,
+              parentContainer,
+              toolInteraction
+            );
+          });
+          statusSpan.appendChild(rerunButton);
+
+          // Display error message
+          alert(`Error re-running tool: ${error.message || "Unknown error"}`);
+        }
+      }
+
       // Add a tool call to the UI
       function addToolCallToUI(toolName, toolInput, parent) {
         // Check if there's already a tool interaction container we can use
@@ -917,6 +1025,17 @@
           const statusSpan = document.createElement("span");
           statusSpan.className = "tool-status";
           statusSpan.innerHTML = '<div class="tool-loading"></div>';
+
+          // Create rerun button
+          const rerunButton = document.createElement("button");
+          rerunButton.className = "tool-rerun-button";
+          rerunButton.textContent = "Re-run";
+          rerunButton.style.display = "none"; // Hide initially until tool completes
+          rerunButton.addEventListener("click", (event) => {
+            event.stopPropagation(); // Prevent toggling of the tool body
+            rerunToolCall(toolName, toolInput, parent, toolInteraction);
+          });
+          statusSpan.appendChild(rerunButton);
 
           // Add both spans to header
           header.appendChild(toolNameSpan);
@@ -947,6 +1066,10 @@
           toolInteraction.appendChild(header);
           toolInteraction.appendChild(body);
 
+          // Store tool name and input for potential re-runs
+          toolInteraction.dataset.toolName = toolName;
+          toolInteraction.dataset.toolInput = JSON.stringify(toolInput);
+
           // Add the interaction container to the parent
           parent.appendChild(toolInteraction);
         } else {
@@ -964,6 +1087,10 @@
           // Update status to show loading
           const statusSpan = toolInteraction.querySelector(".tool-status");
           statusSpan.innerHTML = '<div class="tool-loading"></div>';
+
+          // Store updated tool name and input
+          toolInteraction.dataset.toolName = toolName;
+          toolInteraction.dataset.toolInput = JSON.stringify(toolInput);
         }
 
         elements.messagesContainer.scrollTop =
@@ -972,7 +1099,7 @@
       }
 
       // Add a tool result to the UI
-      function addToolResultToUI(toolResult, parent) {
+      function addToolResultToUI(toolResult, parent, shouldScroll = true) {
         // Find the tool interaction container
         const toolInteraction = parent.querySelector(".tool-interaction");
 
@@ -987,6 +1114,22 @@
             statusSpan.innerHTML = '<span style="color:green;">✓</span>';
           }
 
+          // Add/restore the re-run button
+          const rerunButton = document.createElement("button");
+          rerunButton.className = "tool-rerun-button";
+          rerunButton.textContent = "Re-run";
+          rerunButton.addEventListener("click", (event) => {
+            event.stopPropagation(); // Prevent toggling of the tool body
+
+            // Parse the stored tool data
+            const toolName = toolInteraction.dataset.toolName;
+            const toolInput = JSON.parse(toolInteraction.dataset.toolInput);
+
+            // Re-run the tool
+            rerunToolCall(toolName, toolInput, parent, toolInteraction);
+          });
+          statusSpan.appendChild(rerunButton);
+
           // Add the result to the body
           const toolResultElem = document.createElement("div");
           toolResultElem.className = "tool-result";
@@ -998,8 +1141,12 @@
           body.appendChild(toolResultElem);
         }
 
-        elements.messagesContainer.scrollTop =
-          elements.messagesContainer.scrollHeight;
+        // Only scroll if shouldScroll is true
+        if (shouldScroll) {
+          elements.messagesContainer.scrollTop =
+            elements.messagesContainer.scrollHeight;
+        }
+
         return toolInteraction;
       }
 
@@ -1238,7 +1385,9 @@
           case "anthropic":
             headers["X-API-Key"] = state.apiKeys.anthropic;
             headers["Anthropic-Version"] = "2023-06-01";
-            headers["Anthropic-Beta"] = "token-efficient-tools-2025-02-19";
+            if (modelConfig.modelId === "claude-3-5-sonnet-20240620") {
+              headers["Anthropic-Beta"] = "token-efficient-tools-2025-02-19";
+            }
             headers["Anthropic-Dangerous-Direct-Browser-Access"] = "true";
             break;
           case "openai":
@@ -1300,46 +1449,8 @@
               const claudeTool = {
                 name: tool.name,
                 description: tool.description || "",
-                input_schema: {
-                  type: "object",
-                  properties: {},
-                  required: [],
-                },
+                input_schema: tool.input_schema,
               };
-              if (tool.parameters) {
-                // Extract the basic fields we need
-                const { type, properties, required } = tool.parameters;
-
-                claudeTool.input_schema = {
-                  type: type || "object",
-                  properties: {},
-                  required: Array.isArray(required) ? required : [],
-                };
-
-                // Process properties if they exist
-                if (properties && typeof properties === "object") {
-                  const validProperties = {};
-
-                  Object.entries(properties).forEach(([propName, propDef]) => {
-                    if (typeof propDef === "object") {
-                      validProperties[propName] = {
-                        type: propDef.type || "string",
-                      };
-
-                      if (propDef.description) {
-                        validProperties[propName].description =
-                          propDef.description;
-                      }
-
-                      if (propDef.enum && Array.isArray(propDef.enum)) {
-                        validProperties[propName].enum = propDef.enum;
-                      }
-                    }
-                  });
-
-                  claudeTool.input_schema.properties = validProperties;
-                }
-              }
 
               return claudeTool;
             });
@@ -1603,21 +1714,9 @@
                 function: {
                   name: tool.name,
                   description: tool.description || "",
+                  parameters: tool.input_schema,
                 },
               };
-
-              // Add parameters schema if available
-              if (tool.parameters) {
-                // OpenAI expects parameters in JSON Schema format
-                functionDef.function.parameters = tool.parameters;
-              } else {
-                // Create a minimal schema if none provided
-                functionDef.function.parameters = {
-                  type: "object",
-                  properties: {},
-                  required: [],
-                };
-              }
 
               return functionDef;
             });
@@ -2836,16 +2935,6 @@
         // Continue the conversation by sending the prompt with an empty string
         // This will tell sendToAnthropicAPI to use the existing messages
         await sendToAnthropicAPI("");
-      }
-
-      // Create a list of tools from all servers
-      function getAllTools() {
-        const toolsList = Object.values(state.servers).flatMap(
-          (serverInfo) => serverInfo.tools || []
-        );
-
-        // Ensure all tools have proper parameter schemas
-        return toolsList.map(normalizeToolParameters);
       }
 
       // Normalize tool parameters to ensure they have proper schema
