@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HTML Viewer</title>
+    <!-- Bootstrap CSS -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+      crossorigin="anonymous"
+    />
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Helvetica, Arial, sans-serif;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        overflow: hidden; /* Prevent scrollbars on the main body */
+      }
+      .header {
+        background-color: #f0f0f0;
+        border-bottom: 1px solid #ddd;
+        font-size: 14px;
+        color: #333;
+      }
+      .header h1 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 500;
+      }
+      #editor,
+      #htmlViewerArea {
+        width: 100%;
+        flex: 1; /* Takes up remaining space */
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Helvetica, Arial, sans-serif;
+        font-size: 16px;
+        box-sizing: border-box;
+        overflow: auto; /* Allow scrolling within the editor/viewer */
+      }
+      #editor {
+        resize: none; /* Textarea default */
+        border: none;
+        outline: none;
+        padding: 16px; /* Keep padding for editor textarea itself */
+      }
+      #htmlViewerArea {
+        display: none; /* Initially hidden */
+        border: 1px solid #ddd; /* Add a border to the viewer area */
+        padding: 0; /* Remove padding from the viewer area container */
+      }
+
+      #htmlViewer {
+        width: 100%;
+        height: 100%;
+        border: none; /* Remove default iframe border */
+      }
+      /* Modal styles */
+      .modal {
+        display: none; /* Hidden by default */
+        position: fixed;
+        z-index: 1050; /* Bootstrap modal z-index */
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.4);
+        justify-content: center; /* Center modal content */
+        align-items: center;
+      }
+      /* Show modal using flex display */
+      .modal.show {
+        display: flex;
+      }
+      .modal-content {
+        background-color: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        width: 90%; /* Responsive width */
+        max-width: 500px; /* Max width */
+      }
+      /* Style for the iframe inserted into the modal */
+      .modal-content iframe {
+        display: block; /* Ensure iframe takes its own space */
+        width: 100%;
+        min-height: 200px; /* Give iframe some height */
+        border: 1px solid #eee;
+        margin-top: 15px; /* Space between text and iframe */
+      }
+      #dataBox {
+        display: none; /* Keep this hidden */
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      class="header d-flex justify-content-between align-items-center px-3 py-2 bg-light border-bottom"
+    >
+      <h1 class="me-auto">HTML Viewer</h1>
+      <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" id="viewToggle" />
+        <label class="form-check-label" for="viewToggle">View HTML</label>
+      </div>
+    </div>
+
+    <div id="authorizationFrame" class="modal">
+      <div class="modal-content">
+        <h2>Authorization Required</h2>
+        <p>Please authorize this server to access your text editor data.</p>
+        <!-- The iframe from MCP API will be appended here -->
+      </div>
+    </div>
+
+    <textarea
+      id="editor"
+      placeholder="Enter your text (HTML, CSS, JS) here..."
+    ></textarea>
+
+    <div id="htmlViewerArea">
+      <iframe id="htmlViewer"></iframe>
+    </div>
+
+    <div id="dataBox"></div>
+    <script src="https://caddr-origin.github.io/examples/mcp/api.js"></script>
+    <!-- Bootstrap JS (optional if only using CSS, but good practice) -->
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
+      crossorigin="anonymous"
+    ></script>
+
+    <script>
+      // Get elements
+      const editor = document.getElementById("editor");
+      const htmlViewerArea = document.getElementById("htmlViewerArea");
+      const htmlViewer = document.getElementById("htmlViewer");
+      const viewToggle = document.getElementById("viewToggle");
+      const authModal = document.getElementById("authorizationFrame");
+
+      // Function to show the editor and hide the viewer
+      function showEditor() {
+        editor.style.display = "block";
+        htmlViewerArea.style.display = "none";
+        editor.focus(); // Put focus back on editor
+      }
+
+      // Function to show the viewer and hide the editor
+      function showHtmlViewer() {
+        editor.style.display = "none";
+        htmlViewerArea.style.display = "block"; // Use block as it's a flex item
+        // Inject content into iframe
+        const content = editor.value;
+        try {
+          // Use srcdoc with a basic HTML structure, no internal padding
+          const htmlContent = `<!DOCTYPE html><html><head><style>body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 16px; }</style></head><body>${content}</body></html>`;
+          htmlViewer.srcdoc = htmlContent;
+        } catch (e) {
+          console.error("Error setting iframe srcdoc:", e);
+          // Fallback or error message if srcdoc fails
+          htmlViewer.srcdoc = `<!DOCTYPE html><html><body><p style="color: red;">Could not render content.</p><p>${e.message}</p></body></html>`;
+        }
+      }
+
+      // Handle toggle change
+      viewToggle.addEventListener("change", () => {
+        if (viewToggle.checked) {
+          showHtmlViewer();
+        } else {
+          showEditor();
+        }
+      });
+
+      // --- MCP Server Registration ---
+      registerMCPServer({
+        insertFrame: (frame) => {
+          // Find the content area in the modal and append the frame
+          const modalContent = document.querySelector(
+            "#authorizationFrame .modal-content"
+          );
+          if (modalContent) {
+            modalContent.appendChild(frame);
+          } else {
+            console.error("Modal content area not found!");
+          }
+        },
+        showAuthorizationFrame: () => {
+          // Add 'show' class to display the modal using CSS
+          authModal.classList.add("show");
+        },
+        hideAuthorizationFrame: () => {
+          authModal.classList.remove("show");
+        },
+        name: "text editor",
+        version: "1.2.0", // Version incremented
+        tools: [
+          {
+            name: "get_text_editor_contents",
+            description: "Get the current contents of the text editor.",
+            input_schema: {
+              type: "object",
+              properties: {
+                include_line_numbers: {
+                  type: "boolean",
+                  description: "Whether to include line numbers in the output.",
+                },
+                range_line_start: {
+                  type: "integer",
+                  description: "Start line of the range to get (1-indexed).",
+                },
+                range_line_end: {
+                  type: "integer",
+                  description: "End line of the range to get (1-indexed).",
+                },
+              },
+            },
+            async execute(sender, params) {
+              const lines = editor.value.split("\n");
+              let startLine = params.range_line_start
+                ? Math.max(0, params.range_line_start - 1)
+                : 0;
+              let endLine = params.range_line_end
+                ? Math.max(0, params.range_line_end - 1) // Ensure not negative
+                : lines.length - 1;
+
+              // Ensure valid range and order
+              startLine = Math.min(startLine, lines.length - 1);
+              endLine = Math.min(
+                Math.max(startLine, endLine),
+                lines.length - 1
+              );
+
+              const selectedLines = lines.slice(startLine, endLine + 1);
+
+              if (params.include_line_numbers) {
+                return selectedLines
+                  .map((line, index) => `${startLine + index + 1}: ${line}`)
+                  .join("\n");
+              } else {
+                return selectedLines.join("\n");
+              }
+            },
+          },
+          {
+            name: "replace_single_instance",
+            description:
+              "Replace pattern with replacement text for pattern that appears only once. Automatically switches to HTML view.",
+            input_schema: {
+              type: "object",
+              properties: {
+                pattern: {
+                  type: "string",
+                  description: "The pattern to search for.",
+                },
+                replacement: {
+                  type: "string",
+                  description: "The text to replace the pattern with.",
+                },
+              },
+              required: ["pattern", "replacement"],
+            },
+            async execute(sender, params) {
+              const text = editor.value;
+              const pattern = params.pattern;
+              const replacement = params.replacement;
+
+              const escapedPattern = pattern.replace(
+                /[.*+?^${}()|[\]\\]/g,
+                "\\$&"
+              );
+              // Use a global regex to find all matches
+              const regex = new RegExp(escapedPattern, "g");
+              const matches = text.match(regex);
+
+              if (!matches) {
+                return { error: "not found" };
+              }
+
+              if (matches.length > 1) {
+                return { error: "pattern is not unique" };
+              }
+
+              // If there is exactly one match, perform the replacement
+              editor.value = text.replace(
+                new RegExp(escapedPattern),
+                replacement
+              );
+
+              // Automatically switch to HTML view
+              viewToggle.checked = true;
+              showHtmlViewer();
+
+              return { success: true };
+            },
+          },
+          {
+            name: "get_text_editor_info",
+            description: "Get information about the text editor contents.",
+            input_schema: {
+              type: "object",
+              properties: {},
+            },
+            async execute(sender, params) {
+              const text = editor.value;
+              const lines = text.split("\n");
+              return {
+                line_count: lines.length,
+                character_count: text.length,
+              };
+            },
+          },
+          {
+            name: "set_text_editor_contents",
+            description:
+              "Replace the entire contents of the text editor. Automatically switches to HTML view.",
+            input_schema: {
+              type: "object",
+              properties: {
+                text: {
+                  type: "string",
+                  description: "The new text content.",
+                },
+              },
+              required: ["text"],
+            },
+            async execute(sender, params) {
+              editor.value = params.text;
+
+              // Automatically switch to HTML view
+              viewToggle.checked = true;
+              showHtmlViewer();
+
+              return { success: true };
+            },
+          },
+          // view_as_html tool removed
+        ],
+      });
+
+      // Initial state: show editor and ensure toggle is unchecked
+      showEditor();
+      viewToggle.checked = false;
+    </script>
+  </body>
+</html>

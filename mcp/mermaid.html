@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>caddr.org Mermaid Diagram Viewer</title>
+    <!-- Bootstrap CSS -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+      crossorigin="anonymous"
+    />
+    <!-- Mermaid CSS (optional, but recommended for default styling) -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.css"
+    />
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Helvetica, Arial, sans-serif;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        overflow: hidden; /* Prevent scrollbars on the main body */
+      }
+      .header {
+        background-color: #f0f0f0;
+        border-bottom: 1px solid #ddd;
+        font-size: 14px;
+        color: #333;
+      }
+      .header h1 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 500;
+      }
+
+      /* Main content area using flexbox */
+      .content-area {
+        flex: 1; /* Takes up remaining height */
+        display: flex;
+        overflow: hidden; /* Contain child scrolling */
+      }
+
+      #mermaid-viewer-container {
+        flex: 1; /* Takes up full width and height of content-area */
+        display: flex;
+        flex-direction: column;
+        background-color: #fff; /* White background for viewer */
+        overflow: auto; /* Allow scrolling within the viewer container */
+        padding: 20px; /* Add padding to viewer area */
+        align-items: center; /* Center content horizontally */
+        justify-content: center; /* Center content vertically for placeholder */
+      }
+
+      #mermaid-viewer {
+        /* Mermaid renders SVG inside this div */
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .mermaid-error {
+        color: red;
+        font-family: sans-serif;
+        font-size: 14px;
+        white-space: pre-wrap; /* Maintain line breaks */
+        padding: 10px;
+        border: 1px solid #ffdddd;
+        background-color: #fff5f5;
+        border-radius: 4px;
+        text-align: left;
+      }
+
+      .placeholder-text {
+        font-size: 1.2em;
+        color: #6c757d; /* Bootstrap muted color */
+        text-align: center;
+      }
+
+      /* Modal styles */
+      .modal {
+        display: none; /* Hidden by default */
+        position: fixed;
+        z-index: 1050; /* Bootstrap modal z-index */
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.4);
+        justify-content: center; /* Center modal content */
+        align-items: center;
+      }
+      /* Show modal using flex display */
+      .modal.show {
+        display: flex;
+      }
+      .modal-content {
+        background-color: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        width: 90%; /* Responsive width */
+        max-width: 500px; /* Max width */
+      }
+      /* Style for the iframe inserted into the modal */
+      .modal-content iframe {
+        display: block; /* Ensure iframe takes its own space */
+        width: 100%;
+        min-height: 200px; /* Give iframe some height */
+        border: 1px solid #eee;
+        margin-top: 15px; /* Space between text and iframe */
+      }
+      #dataBox {
+        display: none; /* Keep this hidden */
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      class="header d-flex justify-content-center align-items-center px-3 py-2 bg-light border-bottom"
+    >
+      <h1>Mermaid Diagram Viewer</h1>
+    </div>
+
+    <div class="content-area">
+      <div id="mermaid-viewer-container">
+        <div id="mermaid-viewer">
+          <!-- Diagram or placeholder will be rendered here -->
+        </div>
+      </div>
+    </div>
+
+    <div id="authorizationFrame" class="modal">
+      <div class="modal-content">
+        <h2>Authorization Required</h2>
+        <p>
+          Please authorize this server to access your Mermaid diagram viewer.
+        </p>
+        <!-- The iframe from MCP API will be appended here -->
+      </div>
+    </div>
+
+    <div id="dataBox"></div>
+    <script src="https://caddr-origin.github.io/examples/mcp/api.js"></script>
+    <!-- Bootstrap JS -->
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
+      crossorigin="anonymous"
+    ></script>
+    <!-- Mermaid JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js"></script>
+
+    <script>
+      // Get elements
+      const mermaidViewerContainer = document.getElementById(
+        "mermaid-viewer-container"
+      );
+      const mermaidViewer = document.getElementById("mermaid-viewer");
+      const authModal = document.getElementById("authorizationFrame");
+
+      // Configure Mermaid
+      mermaid.initialize({ startOnLoad: false, theme: "default" });
+
+      // Function to render the diagram
+      async function renderMermaidDiagram(mermaidSyntax) {
+        mermaidViewer.innerHTML = ""; // Clear previous content
+        mermaidViewerContainer.style.justifyContent = "flex-start"; // Align diagram to top
+
+        if (!mermaidSyntax || mermaidSyntax.trim() === "") {
+          mermaidViewer.innerHTML = `<div class="placeholder-text">Please provide Mermaid syntax to render a diagram.</div>`;
+          mermaidViewerContainer.style.justifyContent = "center"; // Re-center placeholder
+          return { success: false, error: "No syntax provided" };
+        }
+
+        try {
+          // Unique ID for rendering
+          const diagramId = "mermaid-diagram-" + Date.now();
+          const { svg, bindFunctions } = await mermaid.render(
+            diagramId,
+            mermaidSyntax
+          );
+          mermaidViewer.innerHTML = svg;
+          if (bindFunctions) {
+            // Call bindFunctions if the diagram has interactive elements
+            // This is important for features like clickable nodes in flowcharts
+            bindFunctions(mermaidViewer.firstChild); // Pass the SVG element
+          }
+          return { success: true, message: "Diagram rendered." };
+        } catch (e) {
+          console.error("Mermaid render error:", e);
+          mermaidViewer.innerHTML = `<div class="mermaid-error"><strong>Error rendering diagram:</strong><br>${e.message.replace(
+            /\n/g,
+            "<br>"
+          )}</div>`;
+          mermaidViewerContainer.style.justifyContent = "center"; // Re-center error message
+          return {
+            success: false,
+            error: "Rendering failed",
+            details: e.message,
+          };
+        } finally {
+          // Ensure viewer scrolls to top on new render, especially if content is tall
+          mermaidViewerContainer.scrollTop = 0;
+        }
+      }
+
+      // --- MCP Server Registration ---
+      registerMCPServer({
+        insertFrame: (frame) => {
+          const modalContent = document.querySelector(
+            "#authorizationFrame .modal-content"
+          );
+          if (modalContent) {
+            modalContent.appendChild(frame);
+          } else {
+            console.error("Modal content area not found!");
+          }
+        },
+        showAuthorizationFrame: () => {
+          authModal.classList.add("show");
+        },
+        hideAuthorizationFrame: () => {
+          authModal.classList.remove("show");
+        },
+        name: "Mermaid Diagram Renderer",
+        version: "2.0.0",
+        tools: [
+          {
+            name: "render_mermaid_diagram",
+            description:
+              "Renders the provided Mermaid syntax and displays it in the viewer.",
+            input_schema: {
+              type: "object",
+              properties: {
+                mermaid_syntax: {
+                  type: "string",
+                  description: "The Mermaid diagram syntax to render.",
+                },
+              },
+              required: ["mermaid_syntax"],
+            },
+            async execute(sender, params) {
+              // The renderMermaidDiagram function now returns status
+              return await renderMermaidDiagram(params.mermaid_syntax);
+            },
+          },
+        ],
+      });
+
+      // Initial state: show placeholder text
+      mermaidViewer.innerHTML = `<div class="placeholder-text">Ready to display Mermaid diagram.</div>`;
+      mermaidViewerContainer.style.justifyContent = "center"; // Center initial placeholder
+    </script>
+  </body>
+</html>
