@@ -1258,7 +1258,7 @@
         let thinkingIndicator = addThinkingIndicator();
 
         try {
-          await sendToAnthropicAPI(prompt);
+          await callLanguageModel(prompt);
         } catch (error) {
           console.error("Error sending message:", error);
 
@@ -1363,8 +1363,7 @@
         }
       }
 
-      // Send message to Anthropic API
-      async function sendToAnthropicAPI(prompt) {
+      async function callLanguageModel(prompt) {
         const models = getAvailableModels();
         const modelConfig = models.find(
           (model) => model.modelId === state.selectedModel
@@ -2470,6 +2469,7 @@
 
       // Handle a tool call
       async function handleToolCall(toolCall, parentContainer) {
+        console.log("handleToolCall", toolCall);
         const { id, name, input } = toolCall;
 
         // Find the server and tool
@@ -2501,24 +2501,8 @@
           await sendToolResult(id, errorResult);
           return;
         }
-
+        let myResult;
         try {
-          // Check if we've had recent OpenAI tool errors - if so, avoid tool calls
-          const recentErrorFound = state.messages.some(
-            (msg) =>
-              msg.role === "tool" &&
-              msg.content &&
-              typeof msg.content === "string" &&
-              msg.content.includes("tool_call") &&
-              msg.content.includes("error")
-          );
-
-          if (recentErrorFound && state.selectedApiType === "openai") {
-            throw new Error(
-              "Skipping tool call due to recent OpenAI tool errors"
-            );
-          }
-
           // IMPORTANT: We have to make sure the last message is the assistant message with the tool_use
           // Check if the message already exists in history
           const lastMessage = state.messages[state.messages.length - 1];
@@ -2613,30 +2597,85 @@
           console.log("Added assistant tool use to history:", id, name, input);
 
           // Call the tool using RPC
-          const result = await RPC(toolServer, name, input);
-
-          // Add the result to UI
-          addToolResultToUI(result, parentContainer);
-
-          // Send the tool result back to continue the conversation
-          await sendToolResult(id, result);
+          myResult = await RPC(toolServer, name, input);
         } catch (error) {
           console.error(`Error executing tool ${name}:`, error);
-          const errorResult = {
+          myResult = {
             is_error: true,
             content: `Error executing tool: ${
               error.message || "Unknown error"
             }`,
           };
-          addToolResultToUI(errorResult, parentContainer);
-
-          // Send the error as a tool result
-          await sendToolResult(id, errorResult);
         }
+
+        addToolResultToUI(myResult, parentContainer);
+
+        // Send the error as a tool result
+        await sendToolResult(id, myResult);
+      }
+
+      function turnStringIntoAnthropicImageContent(input) {
+        // Regex to match data URLs with image mime types and base64 encoding
+        const imageDataUrlRegex = /data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/g;
+        const result = [];
+        let lastIndex = 0;
+        let match;
+
+        while ((match = imageDataUrlRegex.exec(input)) !== null) {
+          // Add text content before this match (if any)
+          if (match.index > lastIndex) {
+            const textContent = input.slice(lastIndex, match.index);
+            result.push({
+              type: "text",
+              text: textContent,
+            });
+          }
+
+          // Parse the data URL to extract mime type and base64 data
+          const dataUrl = match[0];
+          const commaIndex = dataUrl.indexOf(",");
+          const header = dataUrl.slice(0, commaIndex);
+          const base64Data = dataUrl.slice(commaIndex + 1);
+
+          // Extract mime type from header (e.g., "data:image/png;base64" -> "image/png")
+          const mimeTypeMatch = header.match(/data:(image\/[^;]+)/);
+          const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/unknown";
+
+          result.push({
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: mimeType,
+              data: base64Data,
+            },
+          });
+
+          lastIndex = match.index + match[0].length;
+        }
+
+        // Add remaining text after the last match
+        if (lastIndex < input.length) {
+          const textContent = input.slice(lastIndex);
+          result.push({
+            type: "text",
+            text: textContent,
+          });
+        }
+
+        // If no matches were found, return the entire input as text
+        if (result.length === 0) {
+          result.push({
+            type: "text",
+            text: input,
+          });
+        }
+
+        return result;
       }
 
       // Send a tool result back to the API
       async function sendToolResult(toolUseId, result) {
+        console.log("sendToolResult", toolUseId, result);
         // Reset the waiting flag
         state.isWaitingForToolResult = false;
 
@@ -2702,8 +2741,9 @@
               {
                 type: "tool_result",
                 tool_use_id: toolUseId,
-                content:
-                  typeof result === "string" ? result : JSON.stringify(result),
+                content: turnStringIntoAnthropicImageContent(
+                  typeof result === "string" ? result : JSON.stringify(result)
+                ),
                 is_error: result.is_error || false,
               },
             ],
@@ -2934,7 +2974,7 @@
 
         // Continue the conversation by sending the prompt with an empty string
         // This will tell sendToAnthropicAPI to use the existing messages
-        await sendToAnthropicAPI("");
+        await callLanguageModel("");
       }
 
       // Normalize tool parameters to ensure they have proper schema
