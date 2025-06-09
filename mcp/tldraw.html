@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>tldraw Example</title>
+    <link rel="stylesheet" href="https://unpkg.com/tldraw/tldraw.css">
+    <style>
+        #app {
+            position: fixed;
+            inset: 0;
+        }
+        
+        #authorizationFrame {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            border: 2px solid #ccc;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+            min-width: 300px;
+            text-align: center;
+        }
+        
+        #authorizationFrame::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: -1;
+        }
+    </style>
+</head>
+<body>
+    <div id="app"></div>
+    <div id="authorizationFrame" style="display: none">
+        <h3>MCP Authorization</h3>
+        <p>Please authorize this server to control the VM.</p>
+    </div>
+    
+    <script src="https://caddr-origin.github.io/examples/mcp/api.js"></script>
+
+    <script type="module">
+        import React from 'https://esm.sh/react@19?bundle';
+        import { createRoot } from 'https://esm.sh/react-dom@19/client?bundle';
+        import { Tldraw, toRichText } from 'https://esm.sh/tldraw@3.13.1?bundle';
+
+        function App() {
+            const handleMount = (editor) => {
+                editor.createShape({
+                    type: 'text',
+                    x: 200,
+                    y: 200,
+                    props: {
+                        richText: toRichText('Hello tldraw!'),
+                    },
+                });
+
+                editor.selectAll();
+
+                editor.zoomToSelection({
+                    animation: { duration: 2000 },
+                });
+
+                // Initialize MCP server
+                if (typeof registerMCPServer !== "undefined") {
+                    registerMCPServer({
+                        insertFrame: (frame) => {
+                            document.getElementById("authorizationFrame").appendChild(frame);
+                        },
+                        showAuthorizationFrame: () => {
+                            document.getElementById("authorizationFrame").style.display = "block";
+                        },
+                        hideAuthorizationFrame: () => {
+                            document.getElementById("authorizationFrame").style.display = "none";
+                        },
+                        name: "tldraw-controller",
+                        version: "1.0.0",
+                        tools: [
+                            {
+                                name: "render_canvas",
+                                description: "Render the current tldraw canvas as an SVG data URL image. This tool captures the entire canvas contents including all shapes, text, drawings, and other elements. The returned SVG can be used for saving, displaying, or further processing. No parameters are required.\n\nExample usage:\n- Get current canvas state for saving\n- Export drawing for display in another application\n- Create snapshots of canvas at different stages\n\nReturns: { success: true, data_url: 'data:image/svg+xml;base64,...', message: 'Canvas rendered successfully' }",
+                                input_schema: {
+                                    type: "object",
+                                    properties: {},
+                                    required: []
+                                },
+                                async execute(sender, params) {
+                                    try {
+                                        const dataUrl = await editor.getSvgString();
+                                        return {
+                                            success: true,
+                                            data_url: dataUrl,
+                                            message: "Canvas rendered successfully"
+                                        };
+                                    } catch (error) {
+                                        return {
+                                            success: false,
+                                            error: error.message
+                                        };
+                                    }
+                                }
+                            },
+                            {
+                                name: "create_shape",
+                                description: "Create a new shape on the tldraw canvas. Supports all 12 default shape types with comprehensive customization options including colors, sizes, positioning, and type-specific properties.\n\nSupported shape types:\n- text: Text labels with rich formatting\n- geo: Geometric shapes (rectangles, circles, triangles, etc.)\n- note: Sticky note-style text boxes\n- arrow: Directional arrows with optional labels\n- line: Multi-point lines and curves\n- draw: Freehand drawing paths\n- frame: Container frames for grouping\n- image: Image placeholders or URLs\n- video: Video embeds\n- bookmark: Website bookmark cards\n- embed: Embedded content\n- highlight: Highlight annotations\n\nColors: black, grey, light-violet, violet, blue, light-blue, yellow, orange, green, light-green, light-red, red\nSizes: s (small), m (medium), l (large), xl (extra-large)\nGeo types: rectangle, ellipse, triangle, diamond, pentagon, hexagon, octagon, star, rhombus, rhombus-2, oval, trapezoid, arrow-right, arrow-left, arrow-up, arrow-down, x-box, check-box\n\nExample calls:\n1. Create text: { type: 'text', x: 100, y: 100, text: 'Hello World', color: 'blue', size: 'l' }\n2. Create rectangle: { type: 'geo', x: 200, y: 150, width: 120, height: 80, geo: 'rectangle', color: 'red' }\n3. Create arrow: { type: 'arrow', x: 50, y: 50, startX: 0, startY: 0, endX: 100, endY: 50, text: 'Arrow label' }\n4. Create note: { type: 'note', x: 300, y: 200, text: 'Important note', color: 'yellow' }\n5. Create freehand drawing: { type: 'draw', x: 150, y: 100, points: [{x: 0, y: 0}, {x: 20, y: 10}, {x: 40, y: -5}], color: 'green' }\n6. Create line: { type: 'line', x: 100, y: 200, startX: 0, startY: 0, endX: 150, endY: 75 }\n7. Create image: { type: 'image', x: 250, y: 300, width: 200, height: 150, url: 'https://example.com/image.jpg' }",
+                                input_schema: {
+                                    type: "object",
+                                    properties: {
+                                        type: {
+                                            type: "string",
+                                            enum: ["text", "bookmark", "draw", "geo", "note", "line", "frame", "arrow", "highlight", "embed", "image", "video"],
+                                            description: "The type of shape to create"
+                                        },
+                                        x: {
+                                            type: "number",
+                                            description: "X coordinate"
+                                        },
+                                        y: {
+                                            type: "number", 
+                                            description: "Y coordinate"
+                                        },
+                                        width: {
+                                            type: "number",
+                                            description: "Width of the shape"
+                                        },
+                                        height: {
+                                            type: "number",
+                                            description: "Height of the shape"
+                                        },
+                                        text: {
+                                            type: "string",
+                                            description: "Text content for text, note, or geo shapes"
+                                        },
+                                        color: {
+                                            type: "string",
+                                            enum: ["black", "grey", "light-violet", "violet", "blue", "light-blue", "yellow", "orange", "green", "light-green", "light-red", "red"],
+                                            description: "Color of the shape"
+                                        },
+                                        size: {
+                                            type: "string",
+                                            enum: ["s", "m", "l", "xl"],
+                                            description: "Size of the shape"
+                                        },
+                                        geo: {
+                                            type: "string",
+                                            enum: ["rectangle", "ellipse", "triangle", "diamond", "pentagon", "hexagon", "octagon", "star", "rhombus", "rhombus-2", "oval", "trapezoid", "arrow-right", "arrow-left", "arrow-up", "arrow-down", "x-box", "check-box"],
+                                            description: "Geometry type for geo shapes"
+                                        },
+                                        url: {
+                                            type: "string",
+                                            description: "URL for bookmark, embed, image, or video shapes"
+                                        },
+                                        startX: {
+                                            type: "number",
+                                            description: "Start X coordinate for arrow and line shapes"
+                                        },
+                                        startY: {
+                                            type: "number",
+                                            description: "Start Y coordinate for arrow and line shapes"
+                                        },
+                                        endX: {
+                                            type: "number",
+                                            description: "End X coordinate for arrow and line shapes"
+                                        },
+                                        endY: {
+                                            type: "number",
+                                            description: "End Y coordinate for arrow and line shapes"
+                                        },
+                                        points: {
+                                            type: "array",
+                                            items: {
+                                                type: "object",
+                                                properties: {
+                                                    x: { type: "number" },
+                                                    y: { type: "number" }
+                                                },
+                                                required: ["x", "y"]
+                                            },
+                                            description: "Array of points for draw shapes (relative to shape position)"
+                                        }
+                                    },
+                                    required: ["type", "x", "y"]
+                                },
+                                async execute(sender, params) {
+                                    try {
+                                        const shapeProps = {
+                                            type: params.type,
+                                            x: params.x,
+                                            y: params.y,
+                                            props: {}
+                                        };
+
+                                        // Common properties
+                                        if (params.color) shapeProps.props.color = params.color;
+                                        if (params.size) shapeProps.props.size = params.size;
+
+                                        switch (params.type) {
+                                            case 'text':
+                                                shapeProps.props = {
+                                                    richText: toRichText(params.text || 'Text'),
+                                                    w: params.width || 200,
+                                                    color: params.color || 'black',
+                                                    size: params.size || 'm',
+                                                    font: 'draw',
+                                                    textAlign: 'start',
+                                                    scale: 1,
+                                                    autoSize: true
+                                                };
+                                                break;
+                                            
+                                            case 'geo':
+                                                shapeProps.props = {
+                                                    geo: params.geo || 'rectangle',
+                                                    w: params.width || 100,
+                                                    h: params.height || 100,
+                                                    color: params.color || 'black',
+                                                    size: params.size || 'm',
+                                                    fill: 'none',
+                                                    dash: 'draw',
+                                                    richText: toRichText(params.text || ''),
+                                                    font: 'draw',
+                                                    align: 'middle',
+                                                    verticalAlign: 'middle',
+                                                    growY: 0,
+                                                    url: '',
+                                                    scale: 1,
+                                                    labelColor: 'black'
+                                                };
+                                                break;
+                                            
+                                            case 'note':
+                                                shapeProps.props = {
+                                                    richText: toRichText(params.text || 'Note'),
+                                                    color: params.color || 'yellow',
+                                                    size: params.size || 'm',
+                                                    font: 'draw',
+                                                    align: 'middle',
+                                                    verticalAlign: 'middle',
+                                                    growY: 0,
+                                                    url: '',
+                                                    scale: 1,
+                                                    fontSizeAdjustment: 0,
+                                                    labelColor: 'black'
+                                                };
+                                                break;
+                                            
+                                            case 'arrow':
+                                                shapeProps.props = {
+                                                    start: { x: params.startX || 0, y: params.startY || 0 },
+                                                    end: { x: params.endX || 100, y: params.endY || 0 },
+                                                    bend: 0,
+                                                    color: params.color || 'black',
+                                                    size: params.size || 'm',
+                                                    fill: 'none',
+                                                    dash: 'draw',
+                                                    arrowheadStart: 'none',
+                                                    arrowheadEnd: 'arrow',
+                                                    font: 'draw',
+                                                    text: params.text || '',
+                                                    labelPosition: 0.5,
+                                                    labelColor: 'black',
+                                                    scale: 1,
+                                                    elbowMidPoint: 0
+                                                };
+                                                break;
+                                            
+                                            case 'line':
+                                                shapeProps.props = {
+                                                    color: params.color || 'black',
+                                                    size: params.size || 'm',
+                                                    dash: 'draw',
+                                                    spline: 'line',
+                                                    points: {
+                                                        'a1': { id: 'a1', x: params.startX || 0, y: params.startY || 0 },
+                                                        'a2': { id: 'a2', x: params.endX || 100, y: params.endY || 0 }
+                                                    },
+                                                    scale: 1
+                                                };
+                                                break;
+                                            
+                                            case 'frame':
+                                                shapeProps.props = {
+                                                    w: params.width || 200,
+                                                    h: params.height || 200,
+                                                    name: params.text || 'Frame'
+                                                };
+                                                break;
+                                            
+                                            case 'image':
+                                                shapeProps.props = {
+                                                    w: params.width || 200,
+                                                    h: params.height || 200,
+                                                    url: params.url || '',
+                                                    assetId: null,
+                                                    crop: null,
+                                                    flipX: false,
+                                                    flipY: false,
+                                                    playing: true,
+                                                    altText: params.text || ''
+                                                };
+                                                break;
+                                            
+                                            case 'video':
+                                                shapeProps.props = {
+                                                    w: params.width || 200,
+                                                    h: params.height || 200,
+                                                    url: params.url || '',
+                                                    assetId: null,
+                                                    crop: null,
+                                                    flipX: false,
+                                                    flipY: false,
+                                                    playing: false,
+                                                    altText: params.text || ''
+                                                };
+                                                break;
+                                            
+                                            case 'bookmark':
+                                                shapeProps.props = {
+                                                    url: params.url || '',
+                                                    w: params.width || 300,
+                                                    h: params.height || 320,
+                                                    assetId: null,
+                                                    title: params.text || '',
+                                                    description: '',
+                                                    image: '',
+                                                    favicon: ''
+                                                };
+                                                break;
+                                            
+                                            case 'embed':
+                                                shapeProps.props = {
+                                                    url: params.url || '',
+                                                    w: params.width || 300,
+                                                    h: params.height || 200,
+                                                    doesResize: true,
+                                                    overridePermissions: false,
+                                                    overrideSource: false,
+                                                    tmpOldUrl: ''
+                                                };
+                                                break;
+                                            
+                                            case 'draw':
+                                                // Create segments from points array if provided
+                                                let segments = [];
+                                                if (params.points && params.points.length > 0) {
+                                                    segments = [{
+                                                        type: 'free',
+                                                        points: params.points.map(p => ({ x: p.x, y: p.y }))
+                                                    }];
+                                                } else {
+                                                    // Default to a simple line if no points provided
+                                                    segments = [{
+                                                        type: 'free',
+                                                        points: [
+                                                            { x: 0, y: 0 },
+                                                            { x: 50, y: 50 }
+                                                        ]
+                                                    }];
+                                                }
+                                                
+                                                shapeProps.props = {
+                                                    color: params.color || 'black',
+                                                    size: params.size || 'm',
+                                                    fill: 'none',
+                                                    dash: 'draw',
+                                                    segments: segments,
+                                                    isComplete: true,
+                                                    isClosed: false,
+                                                    isPen: false,
+                                                    scale: 1
+                                                };
+                                                break;
+                                            
+                                            case 'highlight':
+                                                shapeProps.props = {
+                                                    color: params.color || 'yellow',
+                                                    size: params.size || 'm',
+                                                    segments: [],
+                                                    isComplete: false,
+                                                    isPen: false,
+                                                    scale: 1
+                                                };
+                                                break;
+                                        }
+
+                                        const shape = editor.createShape(shapeProps);
+                                        return {
+                                            success: true,
+                                            shape_id: shape.id,
+                                            message: `Created ${params.type} shape`
+                                        };
+                                    } catch (error) {
+                                        return {
+                                            success: false,
+                                            error: error.message
+                                        };
+                                    }
+                                }
+                            },
+                            {
+                                name: "edit_shape",
+                                description: "Edit an existing shape on the tldraw canvas by its unique shape ID. This tool allows you to modify shape properties including position (x, y coordinates), text content for text-based shapes, and other shape-specific attributes. You must first use list_shapes to get the shape ID you want to edit.\n\nEditable properties:\n- x, y: Move the shape to new coordinates\n- text: Update text content for text, note, geo, and arrow shapes\n- Additional properties can be updated by extending the tool\n\nWorkflow:\n1. Use list_shapes to find the shape you want to edit\n2. Note the shape's ID from the results\n3. Call edit_shape with the ID and the properties you want to change\n\nExample calls:\n1. Move a shape: { shape_id: 'shape:abc123', x: 300, y: 250 }\n2. Update text: { shape_id: 'shape:def456', text: 'Updated text content' }\n3. Move and update text: { shape_id: 'shape:ghi789', x: 150, y: 200, text: 'New position and text' }\n\nNote: The shape_id must be an exact match from the list_shapes results. Invalid IDs will return an error.",
+                                input_schema: {
+                                    type: "object",
+                                    properties: {
+                                        shape_id: {
+                                            type: "string",
+                                            description: "ID of the shape to edit"
+                                        },
+                                        text: {
+                                            type: "string",
+                                            description: "New text content for text shapes"
+                                        },
+                                        x: {
+                                            type: "number",
+                                            description: "New X coordinate"
+                                        },
+                                        y: {
+                                            type: "number",
+                                            description: "New Y coordinate"
+                                        }
+                                    },
+                                    required: ["shape_id"]
+                                },
+                                async execute(sender, params) {
+                                    try {
+                                        const shape = editor.getShape(params.shape_id);
+                                        if (!shape) {
+                                            throw new Error(`Shape with ID ${params.shape_id} not found`);
+                                        }
+
+                                        const updates = {};
+                                        if (params.x !== undefined) updates.x = params.x;
+                                        if (params.y !== undefined) updates.y = params.y;
+                                        if (params.text !== undefined && shape.type === 'text') {
+                                            updates.props = { ...shape.props, richText: toRichText(params.text) };
+                                        }
+
+                                        editor.updateShape({ id: params.shape_id, ...updates });
+                                        return {
+                                            success: true,
+                                            message: `Updated shape ${params.shape_id}`
+                                        };
+                                    } catch (error) {
+                                        return {
+                                            success: false,
+                                            error: error.message
+                                        };
+                                    }
+                                }
+                            },
+                            {
+                                name: "list_shapes",
+                                description: "List all shapes currently present on the tldraw canvas with their complete properties and metadata. This tool provides a comprehensive inventory of all shapes including their unique IDs, types, positions, dimensions, text content, and visibility status. Essential for understanding the current canvas state and finding shape IDs for editing operations.\n\nReturned information for each shape:\n- id: Unique identifier for the shape (required for edit_shape)\n- type: Shape type (text, geo, arrow, line, draw, note, frame, image, video, bookmark, embed, highlight)\n- x, y: Current position coordinates\n- width, height: Dimensions (where applicable)\n- text: Text content for text-based shapes\n- visible: Whether the shape is currently visible (not locked)\n\nUsage scenarios:\n- Get inventory of all canvas elements\n- Find shape IDs before editing\n- Analyze canvas layout and content\n- Debug shape positioning and properties\n- Prepare for bulk operations\n\nExample response:\n{\n  success: true,\n  shapes: [\n    { id: 'shape:abc123', type: 'text', x: 100, y: 50, width: 'auto', height: 'auto', text: 'Hello', visible: true },\n    { id: 'shape:def456', type: 'geo', x: 200, y: 150, width: 120, height: 80, text: '', visible: true },\n    { id: 'shape:ghi789', type: 'arrow', x: 300, y: 250, width: 100, height: 50, text: 'Arrow label', visible: true }\n  ],\n  count: 3,\n  message: 'Found 3 shapes on canvas'\n}\n\nNo parameters required - simply call this tool to get the complete shape inventory.",
+                                input_schema: {
+                                    type: "object",
+                                    properties: {},
+                                    required: []
+                                },
+                                async execute(sender, params) {
+                                    try {
+                                        const shapes = editor.getCurrentPageShapes();
+                                        const shapeList = shapes.map(shape => ({
+                                            id: shape.id,
+                                            type: shape.type,
+                                            x: shape.x,
+                                            y: shape.y,
+                                            width: shape.props.w || 'auto',
+                                            height: shape.props.h || 'auto',
+                                            text: shape.type === 'text' ? shape.props.text || '' : undefined,
+                                            visible: shape.isLocked === false
+                                        }));
+                                        
+                                        return {
+                                            success: true,
+                                            shapes: shapeList,
+                                            count: shapeList.length,
+                                            message: `Found ${shapeList.length} shapes on canvas`
+                                        };
+                                    } catch (error) {
+                                        return {
+                                            success: false,
+                                            error: error.message
+                                        };
+                                    }
+                                }
+                            }
+                        ]
+                    });
+                }
+            };
+
+            return React.createElement('div', 
+                { style: { position: 'fixed', inset: 0 } },
+                React.createElement(Tldraw, { 
+                    persistenceKey: 'example',
+                    onMount: handleMount 
+                })
+            );
+        }
+
+        const root = createRoot(document.getElementById('app'));
+        root.render(React.createElement(App));
+    </script>
+</body>
+</html>
