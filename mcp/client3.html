@@ -3100,6 +3100,83 @@
             }
 
             // Send a tool result back to the API
+            // Helper function to detect images in tool results and convert to user message for OpenAI/Gemini
+            function convertToolResultWithImagesToUserMessage(toolName, toolInput, result, apiType) {
+                // Check if result contains image data URLs
+                const resultString = typeof result === "string" ? result : JSON.stringify(result);
+                const imageDataUrlRegex = /data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/g;
+                const imageMatches = resultString.match(imageDataUrlRegex);
+                
+                if (!imageMatches || imageMatches.length === 0) {
+                    return null; // No images found, use normal tool result flow
+                }
+                
+                // Create description of the tool call and result
+                const toolDescription = `I called the "${toolName}" tool with the following input:\n${JSON.stringify(toolInput, null, 2)}\n\nThe tool returned the following result with ${imageMatches.length} image(s):`;
+                
+                // Extract text content (remove image data URLs)
+                const textContent = resultString.replace(imageDataUrlRegex, '[Image data - see above]');
+                const fullDescription = `${toolDescription}\n${textContent}`;
+                
+                if (apiType === "openai") {
+                    // OpenAI format with image_url
+                    const content = [
+                        {
+                            "type": "text",
+                            "text": fullDescription
+                        }
+                    ];
+                    
+                    // Add each image
+                    imageMatches.forEach(imageUrl => {
+                        content.push({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": imageUrl
+                            }
+                        });
+                    });
+                    
+                    return {
+                        role: "user",
+                        content: content
+                    };
+                } else if (apiType === "gemini") {
+                    // Gemini format with inline_data
+                    const parts = [
+                        {
+                            "text": fullDescription
+                        }
+                    ];
+                    
+                    // Add each image
+                    imageMatches.forEach(imageUrl => {
+                        // Extract mime type and base64 data
+                        const commaIndex = imageUrl.indexOf(',');
+                        const header = imageUrl.slice(0, commaIndex);
+                        const base64Data = imageUrl.slice(commaIndex + 1);
+                        
+                        // Extract mime type from header (e.g., "data:image/png;base64" -> "image/png")
+                        const mimeMatch = header.match(/data:([^;]+)/);
+                        const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+                        
+                        parts.push({
+                            "inline_data": {
+                                "mime_type": mimeType,
+                                "data": base64Data
+                            }
+                        });
+                    });
+                    
+                    return {
+                        role: "user",
+                        parts: parts
+                    };
+                }
+                
+                return null;
+            }
+
             async function sendToolResult(toolUseId, result) {
                 console.log("sendToolResult", toolUseId, result);
                 // Reset the waiting flag
@@ -3157,7 +3234,56 @@
                 );
                 const apiType = modelConfig ? modelConfig.apiType : "anthropic"; // Default to anthropic if not found
 
-                // Format the tool result message based on API type
+                // For OpenAI and Gemini, check if result contains images and convert to user message
+                if (apiType === "openai" || apiType === "gemini") {
+                    // Extract tool name and input for image conversion
+                    let toolName = "unknown_tool";
+                    let toolInput = {};
+                    
+                    // Search for the tool call in messages to get name and input
+                    for (let i = state.messages.length - 1; i >= 0; i--) {
+                        const msg = state.messages[i];
+                        if (msg.role === "assistant") {
+                            if (Array.isArray(msg.content)) {
+                                const toolUse = msg.content.find(
+                                    (item) => item.type === "tool_use" && item.id === toolUseId,
+                                );
+                                if (toolUse) {
+                                    toolName = toolUse.name;
+                                    toolInput = toolUse.input || {};
+                                    break;
+                                }
+                            } else if (msg.tool_calls) {
+                                const toolCall = msg.tool_calls.find((tc) => tc.id === toolUseId);
+                                if (toolCall) {
+                                    toolName = toolCall.function?.name || "unknown_tool";
+                                    toolInput = JSON.parse(toolCall.function?.arguments || "{}");
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Check if we should convert to user message with images
+                    const userMessage = convertToolResultWithImagesToUserMessage(toolName, toolInput, result, apiType);
+                    if (userMessage) {
+                        console.log("Converting tool result with images to user message for", apiType);
+                        
+                        // Add the user message instead of tool result
+                        state.messages.push(userMessage);
+                        
+                        // Display the user message in UI
+                        const imageText = `Tool Result: ${toolName} returned images (see below)`;
+                        addMessageToUI("user", imageText);
+                        
+                        // Continue the conversation
+                        addThinkingIndicator();
+                        await callLanguageModel("");
+                        return;
+                    }
+                }
+
+                // Format the tool result message based on API type (normal flow for non-image results)
                 let toolResultMessage;
 
                 if (apiType === "anthropic") {
