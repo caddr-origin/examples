@@ -1073,6 +1073,58 @@
             }
 
             // Add a tool call to the UI
+            // Helper function to process tool input and extract data URLs
+            function processToolInputForDisplay(toolInput) {
+                console.log('Processing tool input for data URLs:', toolInput);
+                const dataUrls = [];
+                
+                // Function to recursively search for data URLs in any object/string
+                function findAndReplaceDataUrls(obj, path = '') {
+                    if (typeof obj === 'string') {
+                        // Check if the string is a data URL (improved regex to catch more formats)
+                        const dataUrlMatch = obj.match(/^data:image\/[^;]+;base64,/);
+                        if (dataUrlMatch) {
+                            console.log('Found data URL at path:', path, 'URL starts with:', obj.substring(0, 50));
+                            dataUrls.push({
+                                url: obj,
+                                path: path || 'root'
+                            });
+                            return '[image data url]';
+                        }
+                        // Also check for data URLs that might be embedded in longer strings
+                        if (obj.includes('data:image/') && obj.includes(';base64,')) {
+                            console.log('Found potential embedded data URL at path:', path, 'String contains data:image');
+                            // Extract just the data URL part
+                            const match = obj.match(/(data:image\/[^;]+;base64,[^"'\s,}]+)/);
+                            if (match) {
+                                console.log('Extracted data URL:', match[1].substring(0, 50));
+                                dataUrls.push({
+                                    url: match[1],
+                                    path: path || 'root'
+                                });
+                                return obj.replace(match[1], '[image data url]');
+                            }
+                        }
+                        return obj;
+                    } else if (Array.isArray(obj)) {
+                        return obj.map((item, index) => 
+                            findAndReplaceDataUrls(item, `${path}[${index}]`)
+                        );
+                    } else if (obj && typeof obj === 'object') {
+                        const result = {};
+                        for (const [key, value] of Object.entries(obj)) {
+                            result[key] = findAndReplaceDataUrls(value, path ? `${path}.${key}` : key);
+                        }
+                        return result;
+                    }
+                    return obj;
+                }
+                
+                const processedInput = findAndReplaceDataUrls(toolInput);
+                console.log('Found', dataUrls.length, 'data URLs');
+                return { processedInput, dataUrls };
+            }
+
             function addToolCallToUI(toolName, toolInput, parent) {
                 // Check if there's already a tool interaction container we can use
                 let toolInteraction = parent.querySelector(".tool-interaction");
@@ -1184,6 +1236,9 @@
                 parent,
                 shouldScroll = true,
             ) {
+                console.log('addToolResultToUI called with:', toolResult);
+                console.trace('addToolResultToUI call stack');
+                
                 // Find the tool interaction container
                 const toolInteraction =
                     parent.querySelector(".tool-interaction");
@@ -1227,15 +1282,52 @@
                     });
                     statusSpan.appendChild(rerunButton);
 
-                    // Add the result to the body
+                    // Remove any existing results to avoid duplicates
+                    const existingResults = body.querySelectorAll(".tool-result, .tool-result-images");
+                    existingResults.forEach(elem => elem.remove());
+                    
+                    // Add the result to the body with data URL processing
+                    const { processedInput: processedResult, dataUrls: resultDataUrls } = processToolInputForDisplay(toolResult);
+                    console.log('addToolResultToUI - dataUrls found in result:', resultDataUrls.length);
+                    
                     const toolResultElem = document.createElement("div");
                     toolResultElem.className = "tool-result";
                     toolResultElem.innerHTML = `<strong>Result:</strong><pre>${JSON.stringify(
-                        toolResult,
+                        processedResult,
                         null,
                         2,
                     )}</pre>`;
                     body.appendChild(toolResultElem);
+                    
+                    // Add images for any detected data URLs in the result
+                    if (resultDataUrls.length > 0) {
+                        const imagesContainer = document.createElement("div");
+                        imagesContainer.className = "tool-result-images";
+                        imagesContainer.innerHTML = '<strong>Result Images:</strong>';
+                        
+                        resultDataUrls.forEach((dataUrl, index) => {
+                            const imageContainer = document.createElement("div");
+                            imageContainer.className = "tool-image-container";
+                            
+                            const imageLabel = document.createElement("div");
+                            imageLabel.className = "tool-image-label";
+                            imageLabel.textContent = `Image from result ${dataUrl.path}:`;
+                            
+                            const image = document.createElement("img");
+                            image.src = dataUrl.url;
+                            image.style.maxWidth = "300px";
+                            image.style.maxHeight = "300px";
+                            image.style.border = "1px solid #ccc";
+                            image.style.borderRadius = "4px";
+                            image.style.marginTop = "5px";
+                            
+                            imageContainer.appendChild(imageLabel);
+                            imageContainer.appendChild(image);
+                            imagesContainer.appendChild(imageContainer);
+                        });
+                        
+                        body.appendChild(imagesContainer);
+                    }
                 }
 
                 // Only scroll if shouldScroll is true
@@ -1252,10 +1344,11 @@
                 // First remove any existing thinking indicators to prevent duplicates
                 removeThinkingIndicator();
 
-                // Check if we're actually waiting for something
+                // Check if we're actually waiting for something or if the send button is disabled (indicating active processing)
                 if (
                     !state.activeStreamController &&
-                    !state.isWaitingForToolResult
+                    !state.isWaitingForToolResult &&
+                    !elements.sendButton.disabled
                 ) {
                     return null;
                 }
@@ -1313,16 +1406,20 @@
 
             // Process the stream based on API type
             async function processStreamEnd(pendingToolCalls = []) {
-                // Make sure to remove any thinking indicators at the end of streaming
-                removeThinkingIndicator();
-
                 // Clean up stream state
                 state.activeStreamController = null;
                 state.currentAssistantMessage = null;
 
-                // Execute accumulated tool calls
-                for (const { toolCall, container } of pendingToolCalls) {
-                    await handleToolCall(toolCall, container);
+                // Execute accumulated tool calls (keep thinking indicator during this)
+                if (pendingToolCalls.length > 0) {
+                    // Keep thinking indicator while tools are running
+                    for (const { toolCall, container } of pendingToolCalls) {
+                        await handleToolCall(toolCall, container);
+                    }
+                    // Note: thinking indicator will be managed by sendToolResult -> callLanguageModel flow
+                } else {
+                    // No tools to execute, safe to remove thinking indicator
+                    removeThinkingIndicator();
                 }
             }
 
@@ -3335,6 +3432,9 @@
                     JSON.stringify(state.messages, null, 2),
                 );
 
+                // Add thinking indicator while sending tool result back to model
+                addThinkingIndicator();
+                
                 // Continue the conversation by sending the prompt with an empty string
                 // This will tell sendToAnthropicAPI to use the existing messages
                 await callLanguageModel("");
