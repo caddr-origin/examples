@@ -1,0 +1,3142 @@
+// State management
+const PROVIDER_KEYS = {
+    anthropic: "ANTHROPIC_API_KEY",
+    openai: "OPENAI_API_KEY",
+    gemini: "GEMINI_API_KEY",
+    xai: "XAI_API_KEY",
+    openrouter: "OPENROUTER_API_KEY",
+};
+
+const MODEL_CATALOG = [
+    {
+        name: "Claude Sonnet 4.6",
+        provider: "anthropic",
+        apiType: "anthropic",
+        modelId: "claude-sonnet-4-6",
+        endpoint: "https://api.anthropic.com/v1/messages",
+    },
+    {
+        name: "Claude Opus 4.8",
+        provider: "anthropic",
+        apiType: "anthropic",
+        modelId: "claude-opus-4-8",
+        endpoint: "https://api.anthropic.com/v1/messages",
+    },
+    {
+        name: "Claude Haiku 4.5",
+        provider: "anthropic",
+        apiType: "anthropic",
+        modelId: "claude-haiku-4-5",
+        endpoint: "https://api.anthropic.com/v1/messages",
+    },
+    {
+        name: "GPT-5",
+        provider: "openai",
+        apiType: "openai",
+        modelId: "gpt-5",
+        endpoint: "https://api.openai.com/v1/chat/completions",
+    },
+    {
+        name: "GPT-5 Mini",
+        provider: "openai",
+        apiType: "openai",
+        modelId: "gpt-5-mini",
+        endpoint: "https://api.openai.com/v1/chat/completions",
+    },
+    {
+        name: "o4-mini",
+        provider: "openai",
+        apiType: "openai",
+        modelId: "o4-mini",
+        endpoint: "https://api.openai.com/v1/chat/completions",
+    },
+    {
+        name: "Gemini 2.5 Flash",
+        provider: "gemini",
+        apiType: "gemini",
+        modelId: "gemini-2.5-flash",
+        endpoint:
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent",
+    },
+    {
+        name: "Gemini 2.5 Pro",
+        provider: "gemini",
+        apiType: "gemini",
+        modelId: "gemini-2.5-pro",
+        endpoint:
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:streamGenerateContent",
+    },
+    {
+        name: "Grok 3",
+        provider: "xai",
+        apiType: "xai",
+        modelId: "grok-3",
+        endpoint: "https://api.x.ai/v1/chat/completions",
+    },
+    {
+        name: "Grok 3 Mini",
+        provider: "xai",
+        apiType: "xai",
+        modelId: "grok-3-mini",
+        endpoint: "https://api.x.ai/v1/chat/completions",
+    },
+    {
+        name: "OR · Claude Sonnet 4.6",
+        provider: "openrouter",
+        apiType: "openrouter",
+        modelId: "anthropic/claude-sonnet-4.6",
+        endpoint: "https://openrouter.ai/api/v1/chat/completions",
+    },
+    {
+        name: "OR · GPT-5",
+        provider: "openrouter",
+        apiType: "openrouter",
+        modelId: "openai/gpt-5",
+        endpoint: "https://openrouter.ai/api/v1/chat/completions",
+    },
+    {
+        name: "OR · Gemini 2.5 Pro",
+        provider: "openrouter",
+        apiType: "openrouter",
+        modelId: "google/gemini-2.5-pro",
+        endpoint: "https://openrouter.ai/api/v1/chat/completions",
+    },
+    {
+        name: "OR · Grok 3",
+        provider: "openrouter",
+        apiType: "openrouter",
+        modelId: "x-ai/grok-3",
+        endpoint: "https://openrouter.ai/api/v1/chat/completions",
+    },
+];
+
+const state = {
+    apiKeys: Object.fromEntries(
+        Object.entries(PROVIDER_KEYS).map(([provider, keyName]) => [
+            provider,
+            localStorage.getItem(keyName) || "",
+        ]),
+    ),
+    selectedModel:
+        localStorage.getItem("SELECTED_MODEL") || "claude-sonnet-4-6",
+    selectedApiType:
+        localStorage.getItem("SELECTED_API_TYPE") || "anthropic",
+    messages: [],
+    currentAssistantMessage: null,
+    servers: {},
+    activeStreamController: null,
+    messageIdCounter: 0,
+    isWaitingForToolResult: false,
+};
+
+const elements = {
+    viewChat: document.getElementById("viewChat"),
+    viewSettings: document.getElementById("viewSettings"),
+    layout: document.getElementById("layout"),
+    sidebarToggle: document.getElementById("sidebarToggle"),
+    sidebar: document.getElementById("sidebar"),
+    openSettingsBtn: document.getElementById("openSettingsBtn"),
+    welcomeSettingsBtn: document.getElementById("welcomeSettingsBtn"),
+    backToChatBtn: document.getElementById("backToChatBtn"),
+    newChatBtn: document.getElementById("newChatBtn"),
+    welcomeCard: document.getElementById("welcomeCard"),
+    toast: document.getElementById("toast"),
+    anthropicApiKeyInput: document.getElementById("anthropicApiKeyInput"),
+    saveAnthropicApiKey: document.getElementById("saveAnthropicApiKey"),
+    clearAnthropicApiKey: document.getElementById("clearAnthropicApiKey"),
+    openaiApiKeyInput: document.getElementById("openaiApiKeyInput"),
+    saveOpenaiApiKey: document.getElementById("saveOpenaiApiKey"),
+    clearOpenaiApiKey: document.getElementById("clearOpenaiApiKey"),
+    geminiApiKeyInput: document.getElementById("geminiApiKeyInput"),
+    saveGeminiApiKey: document.getElementById("saveGeminiApiKey"),
+    clearGeminiApiKey: document.getElementById("clearGeminiApiKey"),
+    xaiApiKeyInput: document.getElementById("xaiApiKeyInput"),
+    saveXaiApiKey: document.getElementById("saveXaiApiKey"),
+    clearXaiApiKey: document.getElementById("clearXaiApiKey"),
+    openrouterApiKeyInput: document.getElementById("openrouterApiKeyInput"),
+    saveOpenrouterApiKey: document.getElementById("saveOpenrouterApiKey"),
+    clearOpenrouterApiKey: document.getElementById("clearOpenrouterApiKey"),
+    modelSelector: document.getElementById("modelSelector"),
+    serverList: document.getElementById("serverList"),
+    messagesContainer: document.getElementById("messagesContainer"),
+    promptInput: document.getElementById("promptInput"),
+    sendButton: document.getElementById("sendButton"),
+};
+
+function isOpenAICompatible(apiType) {
+    return apiType === "openai" || apiType === "xai" || apiType === "openrouter";
+}
+
+function showToast(message) {
+    elements.toast.textContent = message;
+    elements.toast.classList.add("show");
+    clearTimeout(showToast._timer);
+    showToast._timer = setTimeout(() => {
+        elements.toast.classList.remove("show");
+    }, 2200);
+}
+
+function showSettings() {
+    elements.viewChat.classList.remove("active");
+    elements.viewSettings.classList.add("active");
+}
+
+function showChat() {
+    elements.viewSettings.classList.remove("active");
+    elements.viewChat.classList.add("active");
+}
+
+function updateKeyStatuses() {
+    for (const provider of Object.keys(PROVIDER_KEYS)) {
+        const status = document.getElementById(`${provider}KeyStatus`);
+        if (!status) continue;
+        const configured = Boolean(state.apiKeys[provider]);
+        status.textContent = configured ? "Configured" : "Not configured";
+        status.classList.toggle("ok", configured);
+    }
+}
+
+function maskConfiguredInputs() {
+    for (const provider of Object.keys(PROVIDER_KEYS)) {
+        const input = elements[`${provider}ApiKeyInput`];
+        if (input && state.apiKeys[provider]) {
+            input.value = "••••••••••••••••••••••••••";
+        }
+    }
+}
+
+function getAvailableModels() {
+    const availableModels = MODEL_CATALOG.filter(
+        (model) => state.apiKeys[model.provider],
+    );
+
+    if (availableModels.length === 0) {
+        return [
+            {
+                name: "Add an API key in Settings",
+                apiType: "none",
+                modelId: "none",
+                endpoint: "",
+            },
+        ];
+    }
+
+    return availableModels;
+}
+
+function populateModelSelector() {
+    const models = getAvailableModels();
+    const previous = state.selectedModel;
+    elements.modelSelector.innerHTML = "";
+
+    models.forEach((model) => {
+        const option = document.createElement("option");
+        option.value = model.modelId;
+        option.dataset.apiType = model.apiType;
+        option.textContent = model.name;
+        elements.modelSelector.appendChild(option);
+    });
+
+    const stillAvailable = models.some((model) => model.modelId === previous);
+    if (stillAvailable) {
+        elements.modelSelector.value = previous;
+    } else if (models[0]?.modelId !== "none") {
+        state.selectedModel = models[0].modelId;
+        state.selectedApiType = models[0].apiType;
+        elements.modelSelector.value = models[0].modelId;
+        localStorage.setItem("SELECTED_MODEL", state.selectedModel);
+        localStorage.setItem("SELECTED_API_TYPE", state.selectedApiType);
+    }
+}
+
+function updateSendButtonState() {
+    const models = getAvailableModels();
+    elements.sendButton.disabled = models[0]?.modelId === "none";
+}
+
+function init() {
+    elements.sidebarToggle.addEventListener("click", toggleSidebar);
+    elements.openSettingsBtn.addEventListener("click", showSettings);
+    elements.welcomeSettingsBtn.addEventListener("click", showSettings);
+    elements.backToChatBtn.addEventListener("click", showChat);
+    elements.newChatBtn.addEventListener("click", startNewChat);
+
+    for (const provider of Object.keys(PROVIDER_KEYS)) {
+        elements[`save${capitalize(provider)}ApiKey`]?.addEventListener(
+            "click",
+            () => saveApiKey(provider),
+        );
+        elements[`clear${capitalize(provider)}ApiKey`]?.addEventListener(
+            "click",
+            () => clearApiKey(provider),
+        );
+    }
+
+    elements.modelSelector.addEventListener("change", handleModelChange);
+    elements.promptInput.addEventListener("keydown", handlePromptKeydown);
+    elements.promptInput.addEventListener("input", autoResizePrompt);
+    elements.sendButton.addEventListener("click", sendMessage);
+
+    maskConfiguredInputs();
+    updateKeyStatuses();
+    populateModelSelector();
+    updateSendButtonState();
+    setupServerListeners();
+
+    setTimeout(updateServerList, 500);
+}
+
+function capitalize(value) {
+    return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function autoResizePrompt() {
+    elements.promptInput.style.height = "auto";
+    elements.promptInput.style.height = `${Math.min(
+        elements.promptInput.scrollHeight,
+        180,
+    )}px`;
+}
+
+function startNewChat() {
+    if (state.activeStreamController) {
+        state.activeStreamController.abort();
+        state.activeStreamController = null;
+    }
+
+    state.messages = [];
+    state.isWaitingForToolResult = false;
+    elements.messagesContainer.innerHTML = "";
+    elements.welcomeCard = document.createElement("div");
+    elements.welcomeCard.id = "welcomeCard";
+    elements.welcomeCard.className = "welcome-card";
+    elements.welcomeCard.innerHTML = `
+        <h2>Ask anything. Call tools anywhere.</h2>
+        <p>Connect MCP servers in other tabs, add an API key in Settings, pick a model, and start chatting.</p>
+        <div class="welcome-actions">
+            <button id="welcomeSettingsBtn" class="primary-btn">Open settings</button>
+        </div>
+    `;
+    elements.messagesContainer.appendChild(elements.welcomeCard);
+    document
+        .getElementById("welcomeSettingsBtn")
+        .addEventListener("click", showSettings);
+}
+
+function handleModelChange() {
+    const selectedOption =
+        elements.modelSelector.options[elements.modelSelector.selectedIndex];
+    state.selectedModel = selectedOption.value;
+    state.selectedApiType = selectedOption.dataset.apiType;
+    localStorage.setItem("SELECTED_MODEL", state.selectedModel);
+    localStorage.setItem("SELECTED_API_TYPE", state.selectedApiType);
+}
+
+function toggleSidebar() {
+    elements.layout.classList.toggle("sidebar-collapsed");
+}
+
+function saveApiKey(provider) {
+    const inputElement = elements[`${provider}ApiKeyInput`];
+    const keyName = PROVIDER_KEYS[provider];
+    if (!inputElement || !keyName) return;
+
+    const apiKey = inputElement.value.trim();
+    if (!apiKey || apiKey.startsWith("••")) return;
+
+    localStorage.setItem(keyName, apiKey);
+    state.apiKeys[provider] = apiKey;
+    inputElement.value = "••••••••••••••••••••••••••";
+    populateModelSelector();
+    updateSendButtonState();
+    updateKeyStatuses();
+    showToast(`${capitalize(provider)} API key saved`);
+}
+
+function clearApiKey(provider) {
+    const keyName = PROVIDER_KEYS[provider];
+    if (!keyName) return;
+
+    localStorage.removeItem(keyName);
+    state.apiKeys[provider] = "";
+    const inputElement = elements[`${provider}ApiKeyInput`];
+    if (inputElement) inputElement.value = "";
+    populateModelSelector();
+    updateSendButtonState();
+    updateKeyStatuses();
+    showToast(`${capitalize(provider)} API key cleared`);
+}
+
+            // Handle keydown in prompt input
+            function handlePromptKeydown(e) {
+                if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            }
+
+            // Load messages from history
+            function loadMessages() {
+                // This could be expanded to load messages from localStorage or a database
+                // For now, we're just displaying the welcome message
+            }
+
+            function setupServerListeners() {
+                registerMCPClient({
+                    insertFrame: (frame) => {
+                        const container = document.getElementById(
+                            "caddrFrameContainer",
+                        );
+                        container.hidden = false;
+                        container.appendChild(frame);
+                    },
+                    showAuthorizationFrame: () => {
+                        document.getElementById(
+                            "caddrFrameContainer",
+                        ).hidden = false;
+                    },
+                    hideAuthorizationFrame: () => {
+                        document.getElementById(
+                            "caddrFrameContainer",
+                        ).hidden = true;
+                    },
+                    updateServerList: (servers) => {
+                        state.servers = servers;
+                        updateServerList();
+                    },
+                });
+            }
+
+            function updateServerList() {
+                elements.serverList.innerHTML = "";
+
+                if (Object.keys(state.servers).length === 0) {
+                    const noServersMsg = document.createElement("div");
+                    noServersMsg.className = "empty-state";
+                    noServersMsg.innerHTML =
+                        "<p>No MCP servers connected yet.</p><p>Open a server page in another tab and it will appear here automatically.</p>";
+                    elements.serverList.appendChild(noServersMsg);
+                    return;
+                }
+
+                Object.entries(state.servers).forEach(
+                    ([serverId, serverInfo]) => {
+                        const card = document.createElement("details");
+                        card.className = "server-card";
+                        card.open = true;
+
+                        const summary = document.createElement("summary");
+                        const serverName = serverInfo.name || "Unknown server";
+                        const serverOrigin = serverInfo.fromOrigin || "";
+                        summary.innerHTML = `
+                            <span>${serverName}</span>
+                            <span class="server-meta">${serverInfo.tools?.length || 0} tools</span>
+                        `;
+                        summary.title = serverOrigin
+                            ? `${serverName} · ${serverOrigin}`
+                            : `Server ID: ${serverId}`;
+                        card.appendChild(summary);
+
+                        const toolsList = document.createElement("div");
+                        toolsList.className = "tool-list";
+
+                        if (serverInfo.tools?.length) {
+                            serverInfo.tools.forEach((tool) => {
+                                const chip = document.createElement("span");
+                                chip.className = "tool-chip";
+                                chip.textContent = tool.name;
+                                chip.title = tool.description || "No description";
+                                toolsList.appendChild(chip);
+                            });
+                        } else {
+                            const chip = document.createElement("span");
+                            chip.className = "tool-chip";
+                            chip.textContent = "No tools";
+                            toolsList.appendChild(chip);
+                        }
+
+                        card.appendChild(toolsList);
+                        elements.serverList.appendChild(card);
+                    },
+                );
+            }
+
+            function hideWelcomeCard() {
+                const welcome = document.getElementById("welcomeCard");
+                if (welcome) welcome.remove();
+            }
+
+            function addMessageToUI(role, content, isPartial = false) {
+                hideWelcomeCard();
+                let messageContainer;
+                const roleClass = role === "user" ? "user" : "assistant";
+                const bubbleClass =
+                    role === "user" ? "msg-user" : "msg-assistant";
+
+                if (!isPartial) {
+                    messageContainer = document.createElement("div");
+                    messageContainer.className = `msg-group ${roleClass}`;
+
+                    const messageHeader = document.createElement("div");
+                    messageHeader.className = "msg-label";
+                    messageHeader.textContent =
+                        role === "user" ? "You" : "Assistant";
+                    messageContainer.appendChild(messageHeader);
+
+                    const message = document.createElement("div");
+                    message.className = `msg ${bubbleClass}`;
+                    message.textContent = content;
+                    messageContainer.appendChild(message);
+
+                    elements.messagesContainer.appendChild(messageContainer);
+                    elements.messagesContainer.scrollTop =
+                        elements.messagesContainer.scrollHeight;
+
+                    return messageContainer;
+                }
+
+                messageContainer = elements.messagesContainer.lastElementChild;
+                const message = messageContainer?.querySelector(`.${bubbleClass}`);
+                if (message) {
+                    message.textContent = content;
+                    elements.messagesContainer.scrollTop =
+                        elements.messagesContainer.scrollHeight;
+                }
+                return messageContainer;
+            }
+
+            // Create a list of tools from all servers
+            function getAllTools() {
+                const toolsList = Object.values(state.servers).flatMap(
+                    (serverInfo) => serverInfo.tools || [],
+                );
+
+                // Ensure all tools have proper parameter schemas
+                return toolsList.map(normalizeToolParameters);
+            }
+
+            // Re-run a tool call without triggering the LLM
+            async function rerunToolCall(
+                toolName,
+                toolInput,
+                parentContainer,
+                toolInteraction,
+            ) {
+                // Find the server and tool
+                let toolServer = null;
+                let toolInfo = null;
+
+                for (const [serverId, serverInfo] of Object.entries(
+                    state.servers,
+                )) {
+                    if (serverInfo.tools) {
+                        const matchingTool = serverInfo.tools.find(
+                            (tool) => tool.name === toolName,
+                        );
+                        if (matchingTool) {
+                            toolServer = serverId;
+                            toolInfo = matchingTool;
+                            break;
+                        }
+                    }
+                }
+
+                if (!toolServer || !toolInfo) {
+                    console.error(`Tool ${toolName} not found in any server`);
+                    alert(
+                        `Error: Tool ${toolName} not found in any available server`,
+                    );
+                    return;
+                }
+
+                try {
+                    // Update UI to show loading
+                    const statusSpan =
+                        toolInteraction.querySelector(".tool-status");
+                    statusSpan.innerHTML = '<div class="tool-loading"></div>';
+
+                    // Generate a unique ID for this re-run
+                    const rerunId = `rerun-${Date.now()}-${Math.floor(
+                        Math.random() * 1000,
+                    )}`;
+
+                    // Call the tool using RPC
+                    const result = await RPC(toolServer, toolName, toolInput);
+
+                    // Remove old tool result if it exists
+                    const oldResult =
+                        toolInteraction.querySelector(".tool-result");
+                    if (oldResult) {
+                        oldResult.remove();
+                    }
+
+                    // Add the new result to UI but don't scroll
+                    addToolResultToUI(result, parentContainer, false);
+
+                    console.log(
+                        `Re-ran tool ${toolName} successfully:`,
+                        result,
+                    );
+                } catch (error) {
+                    console.error(`Error re-running tool ${toolName}:`, error);
+
+                    // Update UI to show error
+                    const statusSpan =
+                        toolInteraction.querySelector(".tool-status");
+                    statusSpan.innerHTML = '<span style="color:red;">❌</span>';
+
+                    // Create re-run button again
+                    const rerunButton = document.createElement("button");
+                    rerunButton.className = "tool-rerun-button";
+                    rerunButton.textContent = "Re-run";
+                    rerunButton.addEventListener("click", (event) => {
+                        event.stopPropagation();
+                        rerunToolCall(
+                            toolName,
+                            toolInput,
+                            parentContainer,
+                            toolInteraction,
+                        );
+                    });
+                    statusSpan.appendChild(rerunButton);
+
+                    // Display error message
+                    alert(
+                        `Error re-running tool: ${error.message || "Unknown error"}`,
+                    );
+                }
+            }
+
+            // Add a tool call to the UI
+            // Helper function to process tool input and extract data URLs
+            function processToolInputForDisplay(toolInput) {
+                console.log('Processing tool input for data URLs:', toolInput);
+                const dataUrls = [];
+                
+                // Function to recursively search for data URLs in any object/string
+                function findAndReplaceDataUrls(obj, path = '') {
+                    if (typeof obj === 'string') {
+                        // Check if the string is a data URL (improved regex to catch more formats)
+                        const dataUrlMatch = obj.match(/^data:image\/[^;]+;base64,/);
+                        if (dataUrlMatch) {
+                            console.log('Found data URL at path:', path, 'URL starts with:', obj.substring(0, 50));
+                            dataUrls.push({
+                                url: obj,
+                                path: path || 'root'
+                            });
+                            return '[image data url]';
+                        }
+                        // Also check for data URLs that might be embedded in longer strings
+                        if (obj.includes('data:image/') && obj.includes(';base64,')) {
+                            console.log('Found potential embedded data URL at path:', path, 'String contains data:image');
+                            // Extract just the data URL part
+                            const match = obj.match(/(data:image\/[^;]+;base64,[^"'\s,}]+)/);
+                            if (match) {
+                                console.log('Extracted data URL:', match[1].substring(0, 50));
+                                dataUrls.push({
+                                    url: match[1],
+                                    path: path || 'root'
+                                });
+                                return obj.replace(match[1], '[image data url]');
+                            }
+                        }
+                        return obj;
+                    } else if (Array.isArray(obj)) {
+                        return obj.map((item, index) => 
+                            findAndReplaceDataUrls(item, `${path}[${index}]`)
+                        );
+                    } else if (obj && typeof obj === 'object') {
+                        const result = {};
+                        for (const [key, value] of Object.entries(obj)) {
+                            result[key] = findAndReplaceDataUrls(value, path ? `${path}.${key}` : key);
+                        }
+                        return result;
+                    }
+                    return obj;
+                }
+                
+                const processedInput = findAndReplaceDataUrls(toolInput);
+                console.log('Found', dataUrls.length, 'data URLs');
+                return { processedInput, dataUrls };
+            }
+
+            function addToolCallToUI(toolName, toolInput, parent) {
+                // Check if there's already a tool interaction container we can use
+                let toolInteraction = parent.querySelector(".tool-interaction");
+
+                if (!toolInteraction) {
+                    // Create a new tool interaction container
+                    toolInteraction = document.createElement("div");
+                    toolInteraction.className = "tool-interaction";
+
+                    // Create the header (always visible)
+                    const header = document.createElement("div");
+                    header.className = "tool-interaction-header";
+
+                    // Create tool name span
+                    const toolNameSpan = document.createElement("span");
+                    toolNameSpan.className = "tool-name";
+                    toolNameSpan.innerHTML = `🔧 Tool: ${toolName}`;
+
+                    // Create status indicator span with loading indicator
+                    const statusSpan = document.createElement("span");
+                    statusSpan.className = "tool-status";
+                    statusSpan.innerHTML = '<div class="tool-loading"></div>';
+
+                    // Create rerun button
+                    const rerunButton = document.createElement("button");
+                    rerunButton.className = "tool-rerun-button";
+                    rerunButton.textContent = "Re-run";
+                    rerunButton.style.display = "none"; // Hide initially until tool completes
+                    rerunButton.addEventListener("click", (event) => {
+                        event.stopPropagation(); // Prevent toggling of the tool body
+                        rerunToolCall(
+                            toolName,
+                            toolInput,
+                            parent,
+                            toolInteraction,
+                        );
+                    });
+                    statusSpan.appendChild(rerunButton);
+
+                    // Add both spans to header
+                    header.appendChild(toolNameSpan);
+                    header.appendChild(statusSpan);
+
+                    header.addEventListener("click", () => {
+                        const body = toolInteraction.querySelector(
+                            ".tool-interaction-body",
+                        );
+                        body.classList.toggle("expanded");
+                    });
+
+                    // Create the body (hidden by default)
+                    const body = document.createElement("div");
+                    body.className = "tool-interaction-body";
+
+                    // Add the tool call to the body
+                    const toolCall = document.createElement("div");
+                    toolCall.className = "tool-call";
+                    toolCall.innerHTML = `<strong>Input:</strong><pre>${JSON.stringify(
+                        toolInput,
+                        null,
+                        2,
+                    )}</pre>`;
+                    body.appendChild(toolCall);
+
+                    // Add header and body to the interaction container
+                    toolInteraction.appendChild(header);
+                    toolInteraction.appendChild(body);
+
+                    // Store tool name and input for potential re-runs
+                    toolInteraction.dataset.toolName = toolName;
+                    toolInteraction.dataset.toolInput =
+                        JSON.stringify(toolInput);
+
+                    // Add the interaction container to the parent
+                    parent.appendChild(toolInteraction);
+                } else {
+                    // Add another tool call to existing container
+                    const body = toolInteraction.querySelector(
+                        ".tool-interaction-body",
+                    );
+                    const toolCall = document.createElement("div");
+                    toolCall.className = "tool-call";
+                    toolCall.innerHTML = `<strong>Input:</strong><pre>${JSON.stringify(
+                        toolInput,
+                        null,
+                        2,
+                    )}</pre>`;
+                    body.appendChild(toolCall);
+
+                    // Update status to show loading
+                    const statusSpan =
+                        toolInteraction.querySelector(".tool-status");
+                    statusSpan.innerHTML = '<div class="tool-loading"></div>';
+
+                    // Store updated tool name and input
+                    toolInteraction.dataset.toolName = toolName;
+                    toolInteraction.dataset.toolInput =
+                        JSON.stringify(toolInput);
+                }
+
+                elements.messagesContainer.scrollTop =
+                    elements.messagesContainer.scrollHeight;
+                return toolInteraction;
+            }
+
+            // Add a tool result to the UI
+            function addToolResultToUI(
+                toolResult,
+                parent,
+                shouldScroll = true,
+            ) {
+                console.log('addToolResultToUI called with:', toolResult);
+                console.trace('addToolResultToUI call stack');
+                
+                // Find the tool interaction container
+                const toolInteraction =
+                    parent.querySelector(".tool-interaction");
+
+                if (toolInteraction) {
+                    const body = toolInteraction.querySelector(
+                        ".tool-interaction-body",
+                    );
+                    const statusSpan =
+                        toolInteraction.querySelector(".tool-status");
+
+                    // Add result status icon to status span
+                    if (toolResult.is_error) {
+                        statusSpan.innerHTML =
+                            '<span style="color:red;">❌</span>';
+                    } else {
+                        statusSpan.innerHTML =
+                            '<span style="color:green;">✓</span>';
+                    }
+
+                    // Add/restore the re-run button
+                    const rerunButton = document.createElement("button");
+                    rerunButton.className = "tool-rerun-button";
+                    rerunButton.textContent = "Re-run";
+                    rerunButton.addEventListener("click", (event) => {
+                        event.stopPropagation(); // Prevent toggling of the tool body
+
+                        // Parse the stored tool data
+                        const toolName = toolInteraction.dataset.toolName;
+                        const toolInput = JSON.parse(
+                            toolInteraction.dataset.toolInput,
+                        );
+
+                        // Re-run the tool
+                        rerunToolCall(
+                            toolName,
+                            toolInput,
+                            parent,
+                            toolInteraction,
+                        );
+                    });
+                    statusSpan.appendChild(rerunButton);
+
+                    // Remove any existing results to avoid duplicates
+                    const existingResults = body.querySelectorAll(".tool-result, .tool-result-images");
+                    existingResults.forEach(elem => elem.remove());
+                    
+                    // Add the result to the body with data URL processing
+                    const { processedInput: processedResult, dataUrls: resultDataUrls } = processToolInputForDisplay(toolResult);
+                    console.log('addToolResultToUI - dataUrls found in result:', resultDataUrls.length);
+                    
+                    const toolResultElem = document.createElement("div");
+                    toolResultElem.className = "tool-result";
+                    toolResultElem.innerHTML = `<strong>Result:</strong><pre>${JSON.stringify(
+                        processedResult,
+                        null,
+                        2,
+                    )}</pre>`;
+                    body.appendChild(toolResultElem);
+                    
+                    // Add images for any detected data URLs in the result
+                    if (resultDataUrls.length > 0) {
+                        const imagesContainer = document.createElement("div");
+                        imagesContainer.className = "tool-result-images";
+                        imagesContainer.innerHTML = '<strong>Result Images:</strong>';
+                        
+                        resultDataUrls.forEach((dataUrl, index) => {
+                            const imageContainer = document.createElement("div");
+                            imageContainer.className = "tool-image-container";
+                            
+                            const imageLabel = document.createElement("div");
+                            imageLabel.className = "tool-image-label";
+                            imageLabel.textContent = `Image from result ${dataUrl.path}:`;
+                            
+                            const image = document.createElement("img");
+                            image.src = dataUrl.url;
+                            image.style.maxWidth = "300px";
+                            image.style.maxHeight = "300px";
+                            image.style.border = "1px solid #ccc";
+                            image.style.borderRadius = "4px";
+                            image.style.marginTop = "5px";
+                            
+                            imageContainer.appendChild(imageLabel);
+                            imageContainer.appendChild(image);
+                            imagesContainer.appendChild(imageContainer);
+                        });
+                        
+                        body.appendChild(imagesContainer);
+                    }
+                }
+
+                // Only scroll if shouldScroll is true
+                if (shouldScroll) {
+                    elements.messagesContainer.scrollTop =
+                        elements.messagesContainer.scrollHeight;
+                }
+
+                return toolInteraction;
+            }
+
+            // Add a thinking indicator
+            function addThinkingIndicator() {
+                // First remove any existing thinking indicators to prevent duplicates
+                removeThinkingIndicator();
+
+                // Check if we're actually waiting for something or if the send button is disabled (indicating active processing)
+                if (
+                    !state.activeStreamController &&
+                    !state.isWaitingForToolResult &&
+                    !elements.sendButton.disabled
+                ) {
+                    return null;
+                }
+
+                const indicator = document.createElement("div");
+                indicator.className = "thinking-indicator";
+                indicator.id = "thinking-indicator"; // Add an ID for easier removal
+                indicator.innerHTML = `
+        <div class="thinking-dots">
+          <div class="dot"></div>
+          <div class="dot"></div>
+          <div class="dot"></div>
+        </div>
+      `;
+                // Ensure it's the last element
+                elements.messagesContainer.appendChild(indicator);
+                elements.messagesContainer.scrollTop =
+                    elements.messagesContainer.scrollHeight;
+                return indicator;
+            }
+
+            // Remove thinking indicator
+            function removeThinkingIndicator(indicator) {
+                // If a specific indicator is passed, remove that one
+                if (indicator && indicator.parentNode) {
+                    indicator.parentNode.removeChild(indicator);
+                    return;
+                }
+
+                // Otherwise, remove any thinking indicators by ID
+                const existingIndicators = document.querySelectorAll(
+                    ".thinking-indicator",
+                );
+                existingIndicators.forEach((indicator) => {
+                    if (indicator.parentNode) {
+                        indicator.parentNode.removeChild(indicator);
+                    }
+                });
+            }
+
+            // Update the UI for streaming content
+            function updateStreamingContent(role, content) {
+                // First remove any thinking indicators
+                removeThinkingIndicator();
+
+                // Update the content
+                addMessageToUI(role, content, true);
+
+                // Re-add the thinking indicator at the end if we're still waiting for more content
+                if (state.activeStreamController) {
+                    return addThinkingIndicator();
+                }
+                return null;
+            }
+
+            // Process the stream based on API type
+            async function processStreamEnd(pendingToolCalls = []) {
+                // Clean up stream state
+                state.activeStreamController = null;
+                state.currentAssistantMessage = null;
+
+                // Execute accumulated tool calls (keep thinking indicator during this)
+                if (pendingToolCalls.length > 0) {
+                    // Keep thinking indicator while tools are running
+                    for (const { toolCall, container } of pendingToolCalls) {
+                        await handleToolCall(toolCall, container);
+                    }
+                    // Note: thinking indicator will be managed by sendToolResult -> callLanguageModel flow
+                } else {
+                    // No tools to execute, safe to remove thinking indicator
+                    removeThinkingIndicator();
+                }
+            }
+
+            // Send a message to the API
+            async function sendMessage() {
+                const prompt = elements.promptInput.value.trim();
+                if (!prompt) return;
+
+                // Check if we have an API key for the selected model type
+                const models = getAvailableModels();
+                const modelConfig = models.find(
+                    (model) => model.modelId === state.selectedModel,
+                );
+
+                if (!modelConfig) {
+                    console.error("Selected model not found");
+                    return;
+                }
+
+                const apiKey =
+                    state.apiKeys[modelConfig.provider || modelConfig.apiType];
+                if (!apiKey && modelConfig.apiType !== "none") {
+                    showToast(
+                        `Add a ${modelConfig.provider || modelConfig.apiType} API key in Settings.`,
+                    );
+                    showSettings();
+                    return;
+                }
+
+                elements.promptInput.value = "";
+                autoResizePrompt();
+
+                // Disable send button while processing
+                elements.sendButton.disabled = true;
+
+                // Add user message to UI only (don't add to state.messages here)
+                addMessageToUI("user", prompt);
+
+                // Add thinking indicator
+                let thinkingIndicator = addThinkingIndicator();
+
+                try {
+                    await callLanguageModel(prompt);
+                } catch (error) {
+                    console.error("Error sending message:", error);
+
+                    // Check if this is a tool-related OpenAI error
+                    if (
+                        error.message &&
+                        error.message.includes("tool_call") &&
+                        isOpenAICompatible(state.selectedApiType)
+                    ) {
+                        // We've hit an OpenAI tool call error that we can't fix - reset state to prevent loops
+                        state.isWaitingForToolResult = false;
+
+                        const errorMessage = document.createElement("div");
+                        errorMessage.className = "msg msg-assistant";
+                        errorMessage.innerHTML = `<strong>Error with OpenAI tools:</strong> ${error.message}`;
+                        elements.messagesContainer.appendChild(errorMessage);
+
+                        // Clean up any pending tool-related messages to prevent loops
+                        state.messages = state.messages.filter((msg) => {
+                            // Keep all user messages and simple assistant messages
+                            if (msg.role === "user") return true;
+                            if (
+                                msg.role === "assistant" &&
+                                !msg.tool_calls &&
+                                !msg.function_call
+                            )
+                                return true;
+
+                            // Filter out problematic tool messages
+                            if (
+                                msg.role === "tool" ||
+                                msg.role === "function" ||
+                                (msg.role === "assistant" &&
+                                    (msg.tool_calls || msg.function_call))
+                            ) {
+                                return false;
+                            }
+
+                            return true;
+                        });
+                    } else {
+                        const errorMessage = document.createElement("div");
+                        errorMessage.className = "msg msg-assistant";
+                        errorMessage.innerHTML = `<strong>Error:</strong> ${
+                            error.message ||
+                            "Failed to send message. Please try again."
+                        }`;
+                        elements.messagesContainer.appendChild(errorMessage);
+                    }
+                } finally {
+                    // Remove thinking indicator
+                    removeThinkingIndicator(thinkingIndicator);
+
+                    // Make sure we clean up stream state regardless of what happened
+                    if (state.activeStreamController) {
+                        state.activeStreamController.abort();
+                        state.activeStreamController = null;
+                    }
+
+                    // Re-enable send button
+                    updateSendButtonState();
+                }
+            }
+
+            // Parse the event stream
+            async function* parseEventStream(stream) {
+                const reader = stream.getReader();
+                const decoder = new TextDecoder("utf-8");
+                let buffer = [];
+
+                try {
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+
+                        for (let byte of value) {
+                            if (
+                                byte === 10 &&
+                                (buffer[buffer.length - 1] === 10 ||
+                                    (buffer[buffer.length - 1] === 13 &&
+                                        buffer[buffer.length - 2] === 10 &&
+                                        buffer[buffer.length - 3] === 13))
+                            ) {
+                                const line = decoder.decode(
+                                    new Uint8Array(buffer),
+                                );
+                                const entries = line
+                                    .split("\n")
+                                    .filter((k) => k)
+                                    .map((k) => {
+                                        const colonIndex = k.indexOf(": ");
+                                        if (colonIndex === -1) return [k, ""];
+                                        return [
+                                            k.slice(0, colonIndex),
+                                            k.slice(colonIndex + 2),
+                                        ];
+                                    });
+
+                                yield Object.fromEntries(entries);
+                                buffer = [];
+                            } else {
+                                buffer.push(byte);
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error("Error reading stream:", error);
+                }
+            }
+
+            async function callLanguageModel(prompt) {
+                const models = getAvailableModels();
+                const modelConfig = models.find(
+                    (model) => model.modelId === state.selectedModel,
+                );
+
+                if (!modelConfig) {
+                    console.error("Selected model not found");
+                    return;
+                }
+
+                let endpoint = modelConfig.endpoint;
+                let headers = {
+                    "Content-Type": "application/json",
+                };
+
+                // Array to accumulate tool calls until fetch completes
+                let pendingToolCalls = [];
+
+                // Add API key to headers based on the model type
+                switch (modelConfig.apiType) {
+                    case "anthropic":
+                        headers["X-API-Key"] = state.apiKeys.anthropic;
+                        headers["Anthropic-Version"] = "2023-06-01";
+                        headers["Anthropic-Dangerous-Direct-Browser-Access"] =
+                            "true";
+                        break;
+                    case "openai":
+                        headers["Authorization"] =
+                            `Bearer ${state.apiKeys.openai}`;
+                        break;
+                    case "xai":
+                        headers["Authorization"] =
+                            `Bearer ${state.apiKeys.xai}`;
+                        break;
+                    case "openrouter":
+                        headers["Authorization"] =
+                            `Bearer ${state.apiKeys.openrouter}`;
+                        headers["HTTP-Referer"] = location.origin;
+                        headers["X-Title"] = "Caddr MCP";
+                        break;
+                    case "gemini":
+                        endpoint = `${endpoint}?alt=sse&key=${state.apiKeys.gemini}`;
+                        break;
+                    default:
+                        console.error(
+                            "Unsupported API type:",
+                            modelConfig.apiType,
+                        );
+                        return;
+                }
+
+                // Create a list of tools from all servers
+                const tools = getAllTools();
+
+                // If this is a new user message (not a tool result)
+                if (prompt) {
+                    // Add the user message to history
+                    if (modelConfig.apiType === "gemini") {
+                        // Gemini has a different format for messages
+                        state.messages.push({
+                            role: "user",
+                            parts: [{ text: prompt }],
+                        });
+                    } else {
+                        // OpenAI and Anthropic use similar message formats
+                        state.messages.push({
+                            role: "user",
+                            content: [{ type: "text", text: prompt }],
+                        });
+                    }
+                }
+
+                // Log the full message history for debugging
+                console.log(
+                    "Sending message history:",
+                    JSON.stringify(state.messages, null, 2),
+                );
+
+                // Abort any existing streams
+                if (state.activeStreamController) {
+                    state.activeStreamController.abort();
+                }
+
+                // Create a new AbortController for this request
+                const controller = new AbortController();
+                state.activeStreamController = controller;
+
+                // Prepare request body based on API type
+                let requestBody;
+
+                switch (modelConfig.apiType) {
+                    case "anthropic":
+                        // Format tools for Claude - they have a specific format requirement than OpenAI
+                        const claudeTools = tools.map((tool) => {
+                            // Start with basic tool structure
+                            const claudeTool = {
+                                name: tool.name,
+                                description: tool.description || "",
+                                input_schema: tool.input_schema,
+                            };
+
+                            return claudeTool;
+                        });
+
+                        // Log tools for debugging
+                        console.log(
+                            "Claude tools being sent:",
+                            JSON.stringify(claudeTools, null, 2),
+                        );
+
+                        requestBody = JSON.stringify({
+                            model: modelConfig.modelId,
+                            messages: state.messages,
+                            tools: claudeTools,
+                            max_tokens: 4096,
+                            stream: true,
+                        });
+                        break;
+                    case "openai":
+                    case "xai":
+                    case "openrouter":
+                        // Convert messages to OpenAI format if needed
+                        const openaiMessages = [];
+                        // Track tool calls that need responses
+                        const pendingToolCalls = new Map();
+                        // Track tool call IDs we've already seen
+                        const processedToolCallIds = new Set();
+
+                        // First, extract and normalize function_call-style assistants to tool_calls format
+                        for (let i = state.messages.length - 1; i >= 0; i--) {
+                            const msg = state.messages[i];
+                            if (
+                                msg.role === "assistant" &&
+                                msg.function_call &&
+                                !msg.tool_calls
+                            ) {
+                                // Convert old function_call to tool_calls format
+                                const toolCallId = `call_${Date.now()}_${Math.floor(
+                                    Math.random() * 10000,
+                                )}`;
+                                state.messages[i] = {
+                                    role: "assistant",
+                                    content: msg.content,
+                                    tool_calls: [
+                                        {
+                                            id: toolCallId,
+                                            type: "function",
+                                            function: {
+                                                name: msg.function_call.name,
+                                                arguments:
+                                                    msg.function_call
+                                                        .arguments || "{}",
+                                            },
+                                        },
+                                    ],
+                                };
+                            }
+                        }
+
+                        // Find response messages for tool calls and ensure proper pairing
+                        const toolCallResponses = new Map();
+                        for (let i = 0; i < state.messages.length; i++) {
+                            const msg = state.messages[i];
+                            if (msg.role === "tool" && msg.tool_call_id) {
+                                toolCallResponses.set(msg.tool_call_id, msg);
+                            } else if (
+                                msg.role === "user" &&
+                                msg.content &&
+                                msg.content[0]?.type === "tool_result"
+                            ) {
+                                if (msg.content[0].tool_use_id) {
+                                    toolCallResponses.set(
+                                        msg.content[0].tool_use_id,
+                                        {
+                                            role: "tool",
+                                            tool_call_id:
+                                                msg.content[0].tool_use_id,
+                                            name:
+                                                msg.content[0].name ||
+                                                "tool_result",
+                                            content: msg.content[0].content,
+                                        },
+                                    );
+                                }
+                            }
+                        }
+
+                        // Process the messages in order
+                        for (let i = 0; i < state.messages.length; i++) {
+                            const msg = state.messages[i];
+
+                            // Handle user messages
+                            if (msg.role === "user") {
+                                if (Array.isArray(msg.content)) {
+                                    openaiMessages.push({
+                                        role: "user",
+                                        content: msg.content
+                                            .map((c) => c.text)
+                                            .join("\n"),
+                                    });
+                                } else if (typeof msg.content === "string") {
+                                    openaiMessages.push(msg);
+                                } else if (
+                                    msg.content &&
+                                    msg.content[0]?.type === "tool_result"
+                                ) {
+                                    // Skip tool results in user messages, as we'll handle them separately
+                                    continue;
+                                } else {
+                                    // Other user message formats
+                                    openaiMessages.push({
+                                        role: "user",
+                                        content:
+                                            typeof msg.content === "string"
+                                                ? msg.content
+                                                : JSON.stringify(
+                                                      msg.content || "",
+                                                  ),
+                                    });
+                                }
+                            }
+                            // Handle assistant messages
+                            else if (msg.role === "assistant") {
+                                if (msg.tool_calls) {
+                                    // Add the assistant message with tool calls
+                                    openaiMessages.push({
+                                        role: "assistant",
+                                        content: msg.content,
+                                        tool_calls: msg.tool_calls,
+                                    });
+
+                                    // Now add responses for each tool call
+                                    for (const toolCall of msg.tool_calls) {
+                                        if (
+                                            processedToolCallIds.has(
+                                                toolCall.id,
+                                            )
+                                        ) {
+                                            // Skip if we've already processed this tool call
+                                            continue;
+                                        }
+
+                                        processedToolCallIds.add(toolCall.id);
+
+                                        // Check if we have a response for this tool call
+                                        if (
+                                            toolCallResponses.has(toolCall.id)
+                                        ) {
+                                            openaiMessages.push(
+                                                toolCallResponses.get(
+                                                    toolCall.id,
+                                                ),
+                                            );
+                                        } else {
+                                            // Create a placeholder response
+                                            console.log(
+                                                `Adding placeholder response for tool call: ${toolCall.id}`,
+                                            );
+                                            openaiMessages.push({
+                                                role: "tool",
+                                                tool_call_id: toolCall.id,
+                                                name:
+                                                    toolCall.function?.name ||
+                                                    "unknown_tool",
+                                                content: JSON.stringify({
+                                                    result: "No response yet",
+                                                }),
+                                            });
+                                        }
+                                    }
+                                }
+                                // Handle assistant with content array (Anthropic format)
+                                else if (Array.isArray(msg.content)) {
+                                    // Check if this message has tool_use items
+                                    const toolUses = msg.content.filter(
+                                        (item) => item.type === "tool_use",
+                                    );
+                                    const textContent =
+                                        msg.content.find(
+                                            (item) => item.type === "text",
+                                        )?.text || "";
+
+                                    if (toolUses.length > 0) {
+                                        // Message has tool calls - format for OpenAI
+                                        const toolCalls = toolUses.map(
+                                            (tool) => ({
+                                                id: tool.id,
+                                                type: "function",
+                                                function: {
+                                                    name: tool.name,
+                                                    arguments: JSON.stringify(
+                                                        tool.input,
+                                                    ),
+                                                },
+                                            }),
+                                        );
+
+                                        const assistantMsg = {
+                                            role: "assistant",
+                                            content: textContent,
+                                            tool_calls: toolCalls,
+                                        };
+                                        openaiMessages.push(assistantMsg);
+
+                                        // Add responses for each tool call
+                                        for (const toolCall of toolCalls) {
+                                            if (
+                                                processedToolCallIds.has(
+                                                    toolCall.id,
+                                                )
+                                            ) {
+                                                // Skip if we've already processed this tool call
+                                                continue;
+                                            }
+
+                                            processedToolCallIds.add(
+                                                toolCall.id,
+                                            );
+
+                                            // Check if we have a response for this tool call
+                                            if (
+                                                toolCallResponses.has(
+                                                    toolCall.id,
+                                                )
+                                            ) {
+                                                openaiMessages.push(
+                                                    toolCallResponses.get(
+                                                        toolCall.id,
+                                                    ),
+                                                );
+                                            } else {
+                                                // Create a placeholder response
+                                                console.log(
+                                                    `Adding placeholder response for tool call: ${toolCall.id}`,
+                                                );
+                                                openaiMessages.push({
+                                                    role: "tool",
+                                                    tool_call_id: toolCall.id,
+                                                    name:
+                                                        toolCall.function
+                                                            ?.name ||
+                                                        "unknown_tool",
+                                                    content: JSON.stringify({
+                                                        result: "No response yet",
+                                                    }),
+                                                });
+                                            }
+                                        }
+                                    } else {
+                                        // Just a text message
+                                        openaiMessages.push({
+                                            role: "assistant",
+                                            content: textContent,
+                                        });
+                                    }
+                                }
+                                // Simple assistant messages
+                                else if (typeof msg.content === "string") {
+                                    openaiMessages.push({
+                                        role: "assistant",
+                                        content: msg.content,
+                                    });
+                                }
+                                // If there's no content, add empty content
+                                else if (
+                                    msg.content === null ||
+                                    msg.content === undefined
+                                ) {
+                                    openaiMessages.push({
+                                        role: "assistant",
+                                        content: "",
+                                    });
+                                }
+                            }
+                            // Skip tool and function messages, as we handle them with the assistant messages
+                            else if (
+                                msg.role === "tool" ||
+                                msg.role === "function"
+                            ) {
+                                continue;
+                            }
+                            // System messages
+                            else if (msg.role === "system") {
+                                openaiMessages.push(msg);
+                            }
+                        }
+
+                        // Clean up: Ensure messages are in proper sequence and no duplicates
+                        const cleanedMessages = [];
+                        const seenToolCallIds = new Set();
+
+                        for (let i = 0; i < openaiMessages.length; i++) {
+                            const msg = openaiMessages[i];
+
+                            // Skip duplicate tool responses
+                            if (msg.role === "tool" && msg.tool_call_id) {
+                                if (seenToolCallIds.has(msg.tool_call_id)) {
+                                    continue;
+                                }
+                                seenToolCallIds.add(msg.tool_call_id);
+                            }
+
+                            cleanedMessages.push(msg);
+                        }
+
+                        // For debugging
+                        console.log(
+                            "OpenAI formatted messages:",
+                            JSON.stringify(cleanedMessages, null, 2),
+                        );
+
+                        // Ensure tools have proper parameters schema for OpenAI
+                        const openaiTools = tools.map((tool) => {
+                            // Create a proper OpenAI function definition with parameters schema
+                            const functionDef = {
+                                type: "function",
+                                function: {
+                                    name: tool.name,
+                                    description: tool.description || "",
+                                    parameters: tool.input_schema,
+                                },
+                            };
+
+                            return functionDef;
+                        });
+
+                        // For debugging, log the tools that are being sent
+                        console.log(
+                            "OpenAI tools being sent:",
+                            JSON.stringify(openaiTools, null, 2),
+                        );
+
+                        requestBody = JSON.stringify({
+                            model: modelConfig.modelId,
+                            messages: cleanedMessages,
+                            tools: openaiTools,
+                            stream: true,
+                        });
+                        break;
+                    case "gemini":
+                        // Convert messages to Gemini format
+                        const geminiContents = [];
+
+                        for (const msg of state.messages) {
+                            if (msg.role === "user") {
+                                if (Array.isArray(msg.content)) {
+                                    // Convert Anthropic format to Gemini format
+                                    geminiContents.push({
+                                        role: "user",
+                                        parts: [
+                                            {
+                                                text: msg.content
+                                                    .map((c) => c.text)
+                                                    .join("\n"),
+                                            },
+                                        ],
+                                    });
+                                } else if (msg.parts) {
+                                    // Already in Gemini format
+                                    geminiContents.push(msg);
+                                } else {
+                                    // Simple content
+                                    geminiContents.push({
+                                        role: "user",
+                                        parts: [{ text: msg.content || "" }],
+                                    });
+                                }
+                            } else if (
+                                msg.role === "assistant" ||
+                                msg.role === "model"
+                            ) {
+                                if (Array.isArray(msg.content)) {
+                                    // Convert Anthropic format to Gemini format
+                                    geminiContents.push({
+                                        role: "model",
+                                        parts: [
+                                            {
+                                                text:
+                                                    msg.content.find(
+                                                        (c) =>
+                                                            c.type === "text",
+                                                    )?.text || "",
+                                            },
+                                        ],
+                                    });
+                                } else if (msg.parts) {
+                                    // Already in Gemini format
+                                    geminiContents.push(msg);
+                                } else {
+                                    // Simple content
+                                    geminiContents.push({
+                                        role: "model",
+                                        parts: [{ text: msg.content || "" }],
+                                    });
+                                }
+                            } else if (msg.role === "function") {
+                                // Function response
+                                geminiContents.push({
+                                    role: "function",
+                                    parts: [
+                                        {
+                                            functionResponse: {
+                                                name: msg.name,
+                                                response: msg.content,
+                                            },
+                                        },
+                                    ],
+                                });
+                            }
+                        }
+
+                        // Format tools for Gemini
+                        const geminiTools = [];
+                        if (tools && tools.length > 0) {
+                            // Create functionDeclarations format
+                            const functionDeclarations = tools.map((tool) => {
+                                // Create proper parameters format
+                                return {
+                                    name: tool.name,
+                                    description: tool.description || "",
+                                    parameters: tool.input_schema,
+                                };
+                            });
+
+                            // Add the tools in the format Gemini expects
+                            geminiTools.push({
+                                functionDeclarations: functionDeclarations,
+                            });
+                        }
+
+                        // For debugging
+                        console.log(
+                            "Gemini request format:",
+                            JSON.stringify(
+                                {
+                                    contents: geminiContents,
+                                    tools: geminiTools,
+                                    generationConfig: {
+                                        responseMimeType: "text/plain",
+                                        maxOutputTokens: 4096,
+                                    },
+                                },
+                                null,
+                                2,
+                            ),
+                        );
+
+                        requestBody = JSON.stringify({
+                            contents: geminiContents,
+                            tools: geminiTools,
+                            generationConfig: {
+                                responseMimeType: "text/plain",
+                                maxOutputTokens: 4096,
+                            },
+                        });
+                        break;
+                    default:
+                        console.error("Unsupported API type for request body");
+                        return;
+                }
+
+                const response = await fetch(endpoint, {
+                    method: "POST",
+                    headers: headers,
+                    body: requestBody,
+                    signal: controller.signal,
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+
+                    if (modelConfig.apiType === "gemini") {
+                        console.error("Gemini API error:", error);
+                        let errorMessage = "Unknown Gemini API error";
+
+                        if (error.error) {
+                            errorMessage =
+                                error.error.message ||
+                                error.error.status ||
+                                "API error";
+                        }
+
+                        throw new Error(`Gemini API Error: ${errorMessage}`);
+                    } else {
+                        throw new Error(
+                            error.error?.message ||
+                                `API returned status ${response.status}`,
+                        );
+                    }
+                }
+
+                // Create a container for the assistant message
+                let assistantContainer = null;
+                let currentTextContent = "";
+                let currentJsonContent = "";
+                let currentToolUse = null;
+                let assistantMessageContent = [];
+                // Keep track of whether we've added an assistant message to the history
+                let addedAssistantMessage = false;
+
+                // Process the stream based on API type
+                if (modelConfig.apiType === "anthropic") {
+                    // Process the Anthropic stream
+                    for await (const event of parseEventStream(response.body)) {
+                        if (event.event === "ping") continue;
+
+                        if (!event.data) continue;
+
+                        const data = JSON.parse(event.data);
+
+                        if (data.type === "message_start") {
+                            state.currentAssistantMessage = data.message;
+                            state.messageIdCounter++;
+                            assistantMessageContent = [];
+                            addedAssistantMessage = false;
+                        } else if (data.type === "content_block_start") {
+                            const contentBlock = data.content_block;
+
+                            if (contentBlock.type === "text") {
+                                currentTextContent = contentBlock.text || "";
+                                assistantContainer = addMessageToUI(
+                                    "assistant",
+                                    currentTextContent,
+                                );
+
+                                // Add to assistant message content array
+                                if (
+                                    !assistantMessageContent.some(
+                                        (item) => item.type === "text",
+                                    )
+                                ) {
+                                    assistantMessageContent.push({
+                                        type: "text",
+                                        text: currentTextContent,
+                                    });
+                                }
+                            } else if (contentBlock.type === "tool_use") {
+                                currentToolUse = {
+                                    id: contentBlock.id,
+                                    name: contentBlock.name,
+                                    input: {},
+                                };
+
+                                // If this is the first content, create a container
+                                if (!assistantContainer) {
+                                    assistantContainer = addMessageToUI(
+                                        "assistant",
+                                        "",
+                                    );
+                                }
+                            }
+                        } else if (data.type === "content_block_delta") {
+                            if (data.delta.type === "text_delta") {
+                                currentTextContent += data.delta.text;
+                                // Replace with updateStreamingContent to ensure thinking indicator is at bottom
+                                thinkingIndicator = updateStreamingContent(
+                                    "assistant",
+                                    currentTextContent,
+                                );
+
+                                // Update the text in the content array
+                                const textItem = assistantMessageContent.find(
+                                    (item) => item.type === "text",
+                                );
+                                if (textItem) {
+                                    textItem.text = currentTextContent;
+                                }
+                            } else if (data.delta.type === "input_json_delta") {
+                                if (currentToolUse) {
+                                    currentJsonContent +=
+                                        data.delta.partial_json || "";
+                                }
+                            }
+                        } else if (data.type === "content_block_stop") {
+                            if (currentToolUse) {
+                                try {
+                                    const parsedJson =
+                                        JSON.parse(currentJsonContent);
+                                    currentToolUse.input = parsedJson;
+                                } catch (e) {
+                                    // Ignore parsing errors for partial JSON
+                                    console.error(
+                                        "Error processing tool use delta:",
+                                        e,
+                                    );
+                                }
+
+                                // Add the tool call to the UI
+                                console.log(
+                                    "Adding tool call to UI",
+                                    currentToolUse,
+                                );
+                                addToolCallToUI(
+                                    currentToolUse.name,
+                                    currentToolUse.input,
+                                    assistantContainer,
+                                );
+
+                                // Add the tool use to the message content array
+                                assistantMessageContent.push({
+                                    type: "tool_use",
+                                    id: currentToolUse.id,
+                                    name: currentToolUse.name,
+                                    input: currentToolUse.input,
+                                });
+
+                                // Accumulate the tool call for later execution
+                                pendingToolCalls.push({
+                                    toolCall: currentToolUse,
+                                    container: assistantContainer,
+                                });
+
+                                currentToolUse = null;
+                                currentJsonContent = "";
+                            }
+                        } else if (data.type === "message_delta") {
+                            if (data.delta.stop_reason === "tool_use") {
+                                state.isWaitingForToolResult = true;
+
+                                // Only add the message if we haven't already and it has tool_use
+                                if (
+                                    !addedAssistantMessage &&
+                                    assistantMessageContent.some(
+                                        (item) => item.type === "tool_use",
+                                    )
+                                ) {
+                                    // We'll let handleToolCall manage adding this to avoid duplication
+                                    addedAssistantMessage = true;
+                                }
+                            }
+                        } else if (data.type === "message_stop") {
+                            // Message completed
+                            // If not waiting for tool result and has content but not yet added to history
+                            if (
+                                !state.isWaitingForToolResult &&
+                                assistantMessageContent.length > 0 &&
+                                !addedAssistantMessage
+                            ) {
+                                state.messages.push({
+                                    role: "assistant",
+                                    content: assistantMessageContent,
+                                });
+                                console.log(
+                                    "Added final assistant message to history:",
+                                    JSON.stringify(
+                                        assistantMessageContent,
+                                        null,
+                                        2,
+                                    ),
+                                );
+                                addedAssistantMessage = true;
+                            }
+
+                            // Clean up the stream and remove thinking indicators
+                            await processStreamEnd(pendingToolCalls);
+                        }
+                    }
+                } else if (isOpenAICompatible(modelConfig.apiType)) {
+                    // Process OpenAI-compatible streams (OpenAI, xAI, OpenRouter)
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder("utf-8");
+
+                    let buffer = "";
+                    let assistantResponse = "";
+                    let toolCallId = null;
+                    let toolName = null;
+                    let toolArguments = "";
+                    let isCollectingToolCall = false;
+
+                    try {
+                        while (true) {
+                            const { done, value } = await reader.read();
+
+                            if (done) {
+                                break;
+                            }
+
+                            buffer += decoder.decode(value, { stream: true });
+                            const lines = buffer.split("\n");
+
+                            // Process all complete lines
+                            buffer = lines.pop() || "";
+
+                            for (const line of lines) {
+                                if (line.trim() === "") continue;
+                                if (line.trim() === "data: [DONE]") continue;
+
+                                try {
+                                    // Extract the JSON part
+                                    const jsonStr = line
+                                        .replace(/^data: /, "")
+                                        .trim();
+                                    if (!jsonStr) continue;
+
+                                    const json = JSON.parse(jsonStr);
+
+                                    // Check for errors in the stream
+                                    if (json.error) {
+                                        console.error(
+                                            "OpenAI API error:",
+                                            json.error,
+                                        );
+                                        if (!assistantContainer) {
+                                            assistantContainer = addMessageToUI(
+                                                "assistant",
+                                                `Error from API: ${
+                                                    json.error.message ||
+                                                    "Unknown error"
+                                                }`,
+                                            );
+                                        }
+                                        continue;
+                                    }
+
+                                    if (
+                                        json.choices &&
+                                        json.choices[0]?.delta?.content
+                                    ) {
+                                        // Regular text content
+                                        const content =
+                                            json.choices[0].delta.content;
+                                        assistantResponse += content;
+
+                                        // Create container if it doesn't exist
+                                        if (!assistantContainer) {
+                                            assistantContainer = addMessageToUI(
+                                                "assistant",
+                                                assistantResponse,
+                                            );
+                                        } else {
+                                            // Update existing container
+                                            updateStreamingContent(
+                                                "assistant",
+                                                assistantResponse,
+                                            );
+                                        }
+
+                                        // Add to content array for history
+                                        if (
+                                            !assistantMessageContent.some(
+                                                (item) => item.type === "text",
+                                            )
+                                        ) {
+                                            assistantMessageContent.push({
+                                                type: "text",
+                                                text: assistantResponse,
+                                            });
+                                        } else {
+                                            // Update existing content
+                                            const textItem =
+                                                assistantMessageContent.find(
+                                                    (item) =>
+                                                        item.type === "text",
+                                                );
+                                            if (textItem) {
+                                                textItem.text =
+                                                    assistantResponse;
+                                            }
+                                        }
+                                    } else if (
+                                        json.choices &&
+                                        json.choices[0]?.delta?.tool_calls
+                                    ) {
+                                        // Handle tool calls (new OpenAI format)
+                                        const toolCalls =
+                                            json.choices[0].delta.tool_calls;
+
+                                        for (const toolCall of toolCalls) {
+                                            if (
+                                                toolCall.index === 0 &&
+                                                toolCall.id
+                                            ) {
+                                                // Start of a new tool call
+                                                toolCallId = toolCall.id;
+                                                isCollectingToolCall = true;
+                                            }
+
+                                            if (toolCall.function) {
+                                                if (toolCall.function.name) {
+                                                    toolName =
+                                                        toolCall.function.name;
+                                                }
+
+                                                if (
+                                                    toolCall.function.arguments
+                                                ) {
+                                                    toolArguments +=
+                                                        toolCall.function
+                                                            .arguments;
+                                                }
+                                            }
+                                        }
+                                    } else if (
+                                        json.choices &&
+                                        json.choices[0]?.finish_reason ===
+                                            "tool_calls" &&
+                                        isCollectingToolCall
+                                    ) {
+                                        // End of the tool call collection
+                                        isCollectingToolCall = false;
+
+                                        // Create the tool use object
+                                        try {
+                                            const parsedArguments =
+                                                JSON.parse(toolArguments);
+                                            currentToolUse = {
+                                                id: toolCallId,
+                                                name: toolName,
+                                                input: parsedArguments,
+                                            };
+
+                                            // If this is the first content, create a container
+                                            if (!assistantContainer) {
+                                                assistantContainer =
+                                                    addMessageToUI(
+                                                        "assistant",
+                                                        "",
+                                                    );
+                                            }
+
+                                            // Add the tool call to UI
+                                            addToolCallToUI(
+                                                currentToolUse.name,
+                                                currentToolUse.input,
+                                                assistantContainer,
+                                            );
+
+                                            // Add to message content
+                                            assistantMessageContent.push({
+                                                type: "tool_use",
+                                                id: currentToolUse.id,
+                                                name: currentToolUse.name,
+                                                input: currentToolUse.input,
+                                            });
+
+                                            // Accumulate the tool call for later execution
+                                            pendingToolCalls.push({
+                                                toolCall: currentToolUse,
+                                                container: assistantContainer,
+                                            });
+
+                                            state.isWaitingForToolResult = true;
+
+                                            // Reset for next potential tool call
+                                            toolCallId = null;
+                                            toolName = null;
+                                            toolArguments = "";
+                                        } catch (e) {
+                                            console.error(
+                                                "Error parsing tool arguments:",
+                                                e,
+                                                toolArguments,
+                                            );
+                                        }
+                                    }
+                                } catch (e) {
+                                    console.error(
+                                        "Error processing OpenAI stream:",
+                                        e,
+                                        line,
+                                    );
+                                }
+                            }
+                        }
+
+                        // Add final assistant message to history if there's content
+                        if (
+                            !state.isWaitingForToolResult &&
+                            (assistantResponse ||
+                                assistantMessageContent.length > 0) &&
+                            !addedAssistantMessage
+                        ) {
+                            if (
+                                assistantResponse &&
+                                !assistantMessageContent.some(
+                                    (item) => item.type === "text",
+                                )
+                            ) {
+                                assistantMessageContent.push({
+                                    type: "text",
+                                    text: assistantResponse,
+                                });
+                            }
+
+                            state.messages.push({
+                                role: "assistant",
+                                content: assistantMessageContent,
+                            });
+
+                            addedAssistantMessage = true;
+                        }
+
+                        // Clean up the stream and remove thinking indicators
+                        await processStreamEnd(pendingToolCalls);
+                    } catch (error) {
+                        console.error("Error reading OpenAI stream:", error);
+                        await processStreamEnd(pendingToolCalls);
+                    } finally {
+                        // Ensure we always clean up properly
+                        await processStreamEnd(pendingToolCalls);
+                    }
+                } else if (modelConfig.apiType === "gemini") {
+                    // Process the Gemini streaming response
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder("utf-8");
+
+                    let buffer = "";
+                    let assistantResponse = "";
+                    let collectingFunctionCall = false;
+                    let functionCallName = "";
+                    let functionCallArgs = {};
+                    let handledChunks = 0;
+
+                    try {
+                        while (true) {
+                            const { done, value } = await reader.read();
+
+                            if (done) {
+                                break;
+                            }
+
+                            buffer += decoder.decode(value, { stream: true });
+                            const lines = buffer.split("\n");
+
+                            // Process all complete lines
+                            buffer = lines.pop() || "";
+
+                            for (const line of lines) {
+                                if (line.trim() === "") continue;
+                                if (line.trim() === "data: [DONE]") continue;
+
+                                // Extract the JSON data
+                                try {
+                                    // Gemini streaming format starts with "data: "
+                                    if (line.startsWith("data: ")) {
+                                        handledChunks++;
+                                        const jsonStr = line
+                                            .substring(6)
+                                            .trim();
+                                        if (!jsonStr) continue;
+
+                                        const data = JSON.parse(jsonStr);
+
+                                        // Handle prompt feedback (errors/blocked content)
+                                        if (
+                                            data.promptFeedback &&
+                                            data.promptFeedback.blockReason
+                                        ) {
+                                            console.error(
+                                                "Content blocked by Gemini API:",
+                                                data.promptFeedback.blockReason,
+                                            );
+                                            if (!assistantContainer) {
+                                                assistantContainer =
+                                                    addMessageToUI(
+                                                        "assistant",
+                                                        `Error: Content blocked by API: ${data.promptFeedback.blockReason}`,
+                                                    );
+                                            }
+                                            break;
+                                        }
+
+                                        // Handle chunks
+                                        if (
+                                            data.candidates &&
+                                            data.candidates.length > 0
+                                        ) {
+                                            const candidate =
+                                                data.candidates[0];
+
+                                            // Handle finish reason if present
+                                            if (
+                                                candidate.finishReason ===
+                                                "STOP"
+                                            ) {
+                                                console.log(
+                                                    "Gemini stream completed normally",
+                                                );
+                                            } else if (
+                                                candidate.finishReason ===
+                                                "SAFETY"
+                                            ) {
+                                                console.warn(
+                                                    "Gemini stream stopped for safety reasons",
+                                                );
+                                                if (!assistantContainer) {
+                                                    assistantContainer =
+                                                        addMessageToUI(
+                                                            "assistant",
+                                                            "Response was filtered due to safety concerns.",
+                                                        );
+                                                }
+                                            }
+
+                                            // Process text content and function calls
+                                            if (
+                                                candidate.content &&
+                                                candidate.content.parts
+                                            ) {
+                                                for (const part of candidate
+                                                    .content.parts) {
+                                                    // Handle text parts
+                                                    if (part.text) {
+                                                        assistantResponse +=
+                                                            part.text;
+
+                                                        // Create or update message container
+                                                        if (
+                                                            !assistantContainer
+                                                        ) {
+                                                            assistantContainer =
+                                                                addMessageToUI(
+                                                                    "assistant",
+                                                                    assistantResponse,
+                                                                );
+                                                        } else {
+                                                            updateStreamingContent(
+                                                                "assistant",
+                                                                assistantResponse,
+                                                            );
+                                                        }
+
+                                                        // Add to message content
+                                                        if (
+                                                            !assistantMessageContent.some(
+                                                                (item) =>
+                                                                    item.type ===
+                                                                    "text",
+                                                            )
+                                                        ) {
+                                                            assistantMessageContent.push(
+                                                                {
+                                                                    type: "text",
+                                                                    text: assistantResponse,
+                                                                },
+                                                            );
+                                                        } else {
+                                                            const textItem =
+                                                                assistantMessageContent.find(
+                                                                    (item) =>
+                                                                        item.type ===
+                                                                        "text",
+                                                                );
+                                                            if (textItem) {
+                                                                textItem.text =
+                                                                    assistantResponse;
+                                                            }
+                                                        }
+                                                    }
+                                                    // Handle function call parts
+                                                    else if (
+                                                        part.functionCall
+                                                    ) {
+                                                        collectingFunctionCall = true;
+                                                        functionCallName =
+                                                            part.functionCall
+                                                                .name;
+                                                        functionCallArgs =
+                                                            part.functionCall
+                                                                .args || {};
+
+                                                        console.log(
+                                                            "Gemini function call detected:",
+                                                            functionCallName,
+                                                            JSON.stringify(
+                                                                functionCallArgs,
+                                                                null,
+                                                                2,
+                                                            ),
+                                                        );
+
+                                                        // Create the tool use object
+                                                        currentToolUse = {
+                                                            id: `gemini-${Date.now()}-${handledChunks}`,
+                                                            name: functionCallName,
+                                                            input: functionCallArgs,
+                                                        };
+
+                                                        // If this is the first content, create a container
+                                                        if (
+                                                            !assistantContainer
+                                                        ) {
+                                                            assistantContainer =
+                                                                addMessageToUI(
+                                                                    "assistant",
+                                                                    "",
+                                                                );
+                                                        }
+
+                                                        // Add the tool call to UI
+                                                        addToolCallToUI(
+                                                            currentToolUse.name,
+                                                            currentToolUse.input,
+                                                            assistantContainer,
+                                                        );
+
+                                                        // Add to Gemini-specific message format
+                                                        if (
+                                                            modelConfig.apiType ===
+                                                            "gemini"
+                                                        ) {
+                                                            // For Gemini, we need to properly format the message history
+                                                            state.messages.push(
+                                                                {
+                                                                    role: "model",
+                                                                    parts: [
+                                                                        {
+                                                                            functionCall:
+                                                                                {
+                                                                                    name: functionCallName,
+                                                                                    args: functionCallArgs,
+                                                                                },
+                                                                        },
+                                                                    ],
+                                                                },
+                                                            );
+                                                        } else {
+                                                            // Add to generic message content array
+                                                            assistantMessageContent.push(
+                                                                {
+                                                                    type: "tool_use",
+                                                                    id: currentToolUse.id,
+                                                                    name: currentToolUse.name,
+                                                                    input: currentToolUse.input,
+                                                                },
+                                                            );
+                                                        }
+
+                                                        // Accumulate the tool call for later execution
+                                                        pendingToolCalls.push({
+                                                            toolCall: currentToolUse,
+                                                            container: assistantContainer,
+                                                        });
+
+                                                        state.isWaitingForToolResult = true;
+
+                                                        // Reset for next potential tool call
+                                                        collectingFunctionCall = false;
+                                                        functionCallName = "";
+                                                        functionCallArgs = {};
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        console.warn(
+                                            "Unexpected Gemini stream format:",
+                                            line,
+                                        );
+                                    }
+                                } catch (e) {
+                                    console.error(
+                                        "Error processing Gemini stream:",
+                                        e,
+                                        line,
+                                    );
+                                }
+                            }
+                        }
+
+                        // Add final message to history if not waiting for tool result
+                        if (
+                            !state.isWaitingForToolResult &&
+                            assistantMessageContent.length > 0 &&
+                            !addedAssistantMessage
+                        ) {
+                            if (modelConfig.apiType === "gemini") {
+                                // Format for Gemini history
+                                const parts = [];
+                                for (const item of assistantMessageContent) {
+                                    if (item.type === "text") {
+                                        parts.push({ text: item.text });
+                                    } else if (item.type === "tool_use") {
+                                        parts.push({
+                                            functionCall: {
+                                                name: item.name,
+                                                args: item.input,
+                                            },
+                                        });
+                                    }
+                                }
+
+                                state.messages.push({
+                                    role: "model",
+                                    parts: parts,
+                                });
+                            } else {
+                                // Standard format
+                                state.messages.push({
+                                    role: "assistant",
+                                    content: assistantMessageContent,
+                                });
+                            }
+
+                            addedAssistantMessage = true;
+                        }
+
+                        // Clean up the stream and remove thinking indicators
+                        await processStreamEnd(pendingToolCalls);
+                    } catch (error) {
+                        console.error("Error processing Gemini stream:", error);
+                        await processStreamEnd(pendingToolCalls);
+                    } finally {
+                        // Ensure we always clean up properly
+                        await processStreamEnd(pendingToolCalls);
+                    }
+                }
+            }
+
+            // Handle a tool call
+            async function handleToolCall(toolCall, parentContainer) {
+                console.log("handleToolCall", toolCall);
+                const { id, name, input } = toolCall;
+
+                // Find the server and tool
+                let toolServer = null;
+                let toolInfo = null;
+
+                for (const [serverId, serverInfo] of Object.entries(
+                    state.servers,
+                )) {
+                    if (serverInfo.tools) {
+                        const matchingTool = serverInfo.tools.find(
+                            (tool) => tool.name === name,
+                        );
+                        if (matchingTool) {
+                            toolServer = serverId;
+                            toolInfo = matchingTool;
+                            break;
+                        }
+                    }
+                }
+
+                if (!toolServer || !toolInfo) {
+                    console.error(`Tool ${name} not found in any server`);
+                    const errorResult = {
+                        is_error: true,
+                        content: `Tool ${name} not found in any available server`,
+                    };
+                    addToolResultToUI(errorResult, parentContainer);
+
+                    // Always send the tool result back, even for errors
+                    await sendToolResult(id, errorResult);
+                    return;
+                }
+                let myResult;
+                try {
+                    // IMPORTANT: We have to make sure the last message is the assistant message with the tool_use
+                    // Check if the message already exists in history
+                    const lastMessage =
+                        state.messages[state.messages.length - 1];
+
+                    // Different handling based on API type
+                    const models = getAvailableModels();
+                    const modelConfig = models.find(
+                        (model) => model.modelId === state.selectedModel,
+                    );
+                    const apiType = modelConfig
+                        ? modelConfig.apiType
+                        : "anthropic"; // Default to anthropic if not found
+
+                    let toolUseExists = false;
+
+                    if (apiType === "anthropic") {
+                        toolUseExists =
+                            lastMessage &&
+                            lastMessage.role === "assistant" &&
+                            lastMessage.content &&
+                            lastMessage.content.some(
+                                (item) =>
+                                    item.type === "tool_use" && item.id === id,
+                            );
+
+                        if (!toolUseExists) {
+                            // Find any previous assistant message with this tool
+                            const assistantMessageIndex =
+                                state.messages.findIndex(
+                                    (msg) =>
+                                        msg.role === "assistant" &&
+                                        msg.content &&
+                                        msg.content.some(
+                                            (item) =>
+                                                item.type === "tool_use" &&
+                                                item.id === id,
+                                        ),
+                                );
+
+                            // If there's a previous one with this tool, remove it to avoid duplicates
+                            if (assistantMessageIndex !== -1) {
+                                state.messages.splice(assistantMessageIndex, 1);
+                            }
+
+                            // Add the assistant message with tool_use to history
+                            state.messages.push({
+                                role: "assistant",
+                                content: [
+                                    {
+                                        type: "tool_use",
+                                        id: id,
+                                        name: name,
+                                        input: input,
+                                    },
+                                ],
+                            });
+                        }
+                    } else if (isOpenAICompatible(apiType)) {
+                        toolUseExists =
+                            lastMessage &&
+                            lastMessage.role === "assistant" &&
+                            lastMessage.function_call;
+
+                        if (!toolUseExists) {
+                            // Add appropriate OpenAI format message
+                            state.messages.push({
+                                role: "assistant",
+                                content: null,
+                                function_call: {
+                                    name: name,
+                                    arguments: JSON.stringify(input),
+                                },
+                            });
+                        }
+                    } else if (apiType === "gemini") {
+                        toolUseExists =
+                            lastMessage &&
+                            lastMessage.role === "model" &&
+                            lastMessage.parts &&
+                            lastMessage.parts.some((part) => part.functionCall);
+
+                        if (!toolUseExists) {
+                            // Add appropriate Gemini format message
+                            state.messages.push({
+                                role: "model",
+                                parts: [
+                                    {
+                                        functionCall: {
+                                            name: name,
+                                            args: input,
+                                        },
+                                    },
+                                ],
+                            });
+                        }
+                    }
+
+                    console.log(
+                        "Added assistant tool use to history:",
+                        id,
+                        name,
+                        input,
+                    );
+
+                    // Call the tool using RPC
+                    myResult = await RPC(toolServer, name, input);
+                } catch (error) {
+                    console.error(`Error executing tool ${name}:`, error);
+                    myResult = {
+                        is_error: true,
+                        content: `Error executing tool: ${
+                            error.message || "Unknown error"
+                        }`,
+                    };
+                }
+
+                addToolResultToUI(myResult, parentContainer);
+
+                // Send the error as a tool result
+                await sendToolResult(id, myResult);
+            }
+
+            function turnStringIntoAnthropicImageContent(input) {
+                // Regex to match data URLs with image mime types and base64 encoding
+                const imageDataUrlRegex =
+                    /data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/g;
+                const result = [];
+                let lastIndex = 0;
+                let match;
+
+                while ((match = imageDataUrlRegex.exec(input)) !== null) {
+                    // Add text content before this match (if any)
+                    if (match.index > lastIndex) {
+                        const textContent = input.slice(lastIndex, match.index);
+                        result.push({
+                            type: "text",
+                            text: textContent,
+                        });
+                    }
+
+                    // Parse the data URL to extract mime type and base64 data
+                    const dataUrl = match[0];
+                    const commaIndex = dataUrl.indexOf(",");
+                    const header = dataUrl.slice(0, commaIndex);
+                    const base64Data = dataUrl.slice(commaIndex + 1);
+
+                    // Extract mime type from header (e.g., "data:image/png;base64" -> "image/png")
+                    const mimeTypeMatch = header.match(/data:(image\/[^;]+)/);
+                    const mimeType = mimeTypeMatch
+                        ? mimeTypeMatch[1]
+                        : "image/unknown";
+
+                    result.push({
+                        type: "image",
+                        source: {
+                            type: "base64",
+                            media_type: mimeType,
+                            data: base64Data,
+                        },
+                    });
+
+                    lastIndex = match.index + match[0].length;
+                }
+
+                // Add remaining text after the last match
+                if (lastIndex < input.length) {
+                    const textContent = input.slice(lastIndex);
+                    result.push({
+                        type: "text",
+                        text: textContent,
+                    });
+                }
+
+                // If no matches were found, return the entire input as text
+                if (result.length === 0) {
+                    result.push({
+                        type: "text",
+                        text: input,
+                    });
+                }
+
+                return result;
+            }
+
+            // Send a tool result back to the API
+            // Helper function to detect images in tool results and convert to user message for OpenAI/Gemini
+            function convertToolResultWithImagesToUserMessage(toolName, toolInput, result, apiType) {
+                // Check if result contains image data URLs
+                const resultString = typeof result === "string" ? result : JSON.stringify(result);
+                const imageDataUrlRegex = /data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/g;
+                const imageMatches = resultString.match(imageDataUrlRegex);
+                
+                if (!imageMatches || imageMatches.length === 0) {
+                    return null; // No images found, use normal tool result flow
+                }
+                
+                // Create description of the tool call and result
+                const toolDescription = `I called the "${toolName}" tool with the following input:\n${JSON.stringify(toolInput, null, 2)}\n\nThe tool returned the following result with ${imageMatches.length} image(s):`;
+                
+                // Extract text content (remove image data URLs)
+                const textContent = resultString.replace(imageDataUrlRegex, '[Image data - see above]');
+                const fullDescription = `${toolDescription}\n${textContent}`;
+                
+                if (isOpenAICompatible(apiType)) {
+                    // OpenAI-compatible format with image_url
+                    const content = [
+                        {
+                            "type": "text",
+                            "text": fullDescription
+                        }
+                    ];
+                    
+                    // Add each image
+                    imageMatches.forEach(imageUrl => {
+                        content.push({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": imageUrl
+                            }
+                        });
+                    });
+                    
+                    return {
+                        role: "user",
+                        content: content
+                    };
+                } else if (apiType === "gemini") {
+                    // Gemini format with inline_data
+                    const parts = [
+                        {
+                            "text": fullDescription
+                        }
+                    ];
+                    
+                    // Add each image
+                    imageMatches.forEach(imageUrl => {
+                        // Extract mime type and base64 data
+                        const commaIndex = imageUrl.indexOf(',');
+                        const header = imageUrl.slice(0, commaIndex);
+                        const base64Data = imageUrl.slice(commaIndex + 1);
+                        
+                        // Extract mime type from header (e.g., "data:image/png;base64" -> "image/png")
+                        const mimeMatch = header.match(/data:([^;]+)/);
+                        const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+                        
+                        parts.push({
+                            "inline_data": {
+                                "mime_type": mimeType,
+                                "data": base64Data
+                            }
+                        });
+                    });
+                    
+                    return {
+                        role: "user",
+                        parts: parts
+                    };
+                }
+                
+                return null;
+            }
+
+            async function sendToolResult(toolUseId, result) {
+                console.log("sendToolResult", toolUseId, result);
+                // Reset the waiting flag
+                state.isWaitingForToolResult = false;
+
+                // If the result contains an error related to OpenAI tool calls, don't try to send it again
+                if (
+                    result &&
+                    result.is_error &&
+                    typeof result.content === "string" &&
+                    result.content.includes("tool_call") &&
+                    isOpenAICompatible(state.selectedApiType)
+                ) {
+                    console.warn(
+                        "Detected OpenAI tool error in result - breaking the loop",
+                    );
+
+                    // Display error to user
+                    const errorMessage = document.createElement("div");
+                    errorMessage.className = "msg msg-assistant";
+                    errorMessage.innerHTML = `<strong>Error:</strong> ${result.content}`;
+                    elements.messagesContainer.appendChild(errorMessage);
+
+                    // Clean up message history to prevent loops
+                    state.messages = state.messages.filter((msg) => {
+                        // Keep all user messages and simple assistant messages
+                        if (msg.role === "user") return true;
+                        if (
+                            msg.role === "assistant" &&
+                            !msg.tool_calls &&
+                            !msg.function_call
+                        )
+                            return true;
+
+                        // Filter out problematic tool messages
+                        if (
+                            msg.role === "tool" ||
+                            msg.role === "function" ||
+                            (msg.role === "assistant" &&
+                                (msg.tool_calls || msg.function_call))
+                        ) {
+                            return false;
+                        }
+
+                        return true;
+                    });
+
+                    return; // Don't continue with API call
+                }
+
+                // Get current model configuration
+                const models = getAvailableModels();
+                const modelConfig = models.find(
+                    (model) => model.modelId === state.selectedModel,
+                );
+                const apiType = modelConfig ? modelConfig.apiType : "anthropic"; // Default to anthropic if not found
+
+                // For OpenAI and Gemini, check if result contains images and convert to user message
+                if (isOpenAICompatible(apiType) || apiType === "gemini") {
+                    // Extract tool name and input for image conversion
+                    let toolName = "unknown_tool";
+                    let toolInput = {};
+                    
+                    // Search for the tool call in messages to get name and input
+                    for (let i = state.messages.length - 1; i >= 0; i--) {
+                        const msg = state.messages[i];
+                        if (msg.role === "assistant") {
+                            if (Array.isArray(msg.content)) {
+                                const toolUse = msg.content.find(
+                                    (item) => item.type === "tool_use" && item.id === toolUseId,
+                                );
+                                if (toolUse) {
+                                    toolName = toolUse.name;
+                                    toolInput = toolUse.input || {};
+                                    break;
+                                }
+                            } else if (msg.tool_calls) {
+                                const toolCall = msg.tool_calls.find((tc) => tc.id === toolUseId);
+                                if (toolCall) {
+                                    toolName = toolCall.function?.name || "unknown_tool";
+                                    toolInput = JSON.parse(toolCall.function?.arguments || "{}");
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Check if we should convert to user message with images
+                    const userMessage = convertToolResultWithImagesToUserMessage(toolName, toolInput, result, apiType);
+                    if (userMessage) {
+                        console.log("Converting tool result with images to user message for", apiType);
+                        
+                        // Add the user message instead of tool result
+                        state.messages.push(userMessage);
+                        
+                        // Display the user message in UI
+                        const imageText = `Tool Result: ${toolName} returned images (see below)`;
+                        addMessageToUI("user", imageText);
+                        
+                        // Continue the conversation
+                        addThinkingIndicator();
+                        await callLanguageModel("");
+                        return;
+                    }
+                }
+
+                // Format the tool result message based on API type (normal flow for non-image results)
+                let toolResultMessage;
+
+                if (apiType === "anthropic") {
+                    toolResultMessage = {
+                        role: "user",
+                        content: [
+                            {
+                                type: "tool_result",
+                                tool_use_id: toolUseId,
+                                content: turnStringIntoAnthropicImageContent(
+                                    typeof result === "string"
+                                        ? result
+                                        : JSON.stringify(result),
+                                ),
+                                is_error: result.is_error || false,
+                            },
+                        ],
+                    };
+                } else if (isOpenAICompatible(apiType)) {
+                    // Find the assistant's tool call to get the name
+                    let toolName = "tool_result";
+                    let foundToolCallMessage = false;
+                    let toolCallMessage = null;
+
+                    // Search for the tool call in messages
+                    for (let i = state.messages.length - 1; i >= 0; i--) {
+                        const msg = state.messages[i];
+                        if (msg.role === "assistant") {
+                            // Check for various formats of tool calls
+                            if (Array.isArray(msg.content)) {
+                                const toolUse = msg.content.find(
+                                    (item) =>
+                                        item.type === "tool_use" &&
+                                        item.id === toolUseId,
+                                );
+                                if (toolUse) {
+                                    toolName = toolUse.name;
+                                    // Convert to OpenAI format
+                                    toolCallMessage = {
+                                        role: "assistant",
+                                        content: null,
+                                        tool_calls: [
+                                            {
+                                                id: toolUseId,
+                                                type: "function",
+                                                function: {
+                                                    name: toolName,
+                                                    arguments: JSON.stringify(
+                                                        toolUse.input || {},
+                                                    ),
+                                                },
+                                            },
+                                        ],
+                                    };
+                                    foundToolCallMessage = true;
+                                    break;
+                                }
+                            } else if (msg.tool_calls) {
+                                const toolCall = msg.tool_calls.find(
+                                    (tc) => tc.id === toolUseId,
+                                );
+                                if (toolCall) {
+                                    toolName =
+                                        toolCall.function?.name ||
+                                        "tool_result";
+                                    toolCallMessage = msg;
+                                    foundToolCallMessage = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    // If no valid tool call message found, create one with a different ID
+                    // Using a random value to avoid collisions with dynamically generated IDs
+                    if (!foundToolCallMessage) {
+                        const newToolCallId = `call_${Date.now()}_${Math.floor(
+                            Math.random() * 1000,
+                        )}`;
+                        console.warn(
+                            `Creating new tool call message with ID ${newToolCallId} for OpenAI compatibility`,
+                        );
+                        toolCallMessage = {
+                            role: "assistant",
+                            content: null,
+                            tool_calls: [
+                                {
+                                    id: newToolCallId,
+                                    type: "function",
+                                    function: {
+                                        name: toolName,
+                                        arguments: "{}",
+                                    },
+                                },
+                            ],
+                        };
+                        toolUseId = newToolCallId; // Use the new ID for the response
+                    }
+
+                    // Create the tool response message
+                    toolResultMessage = {
+                        role: "tool",
+                        tool_call_id: toolUseId,
+                        name: toolName,
+                        content:
+                            typeof result === "string"
+                                ? result
+                                : JSON.stringify(result),
+                    };
+
+                    // Now ensure proper ordering in the message history
+
+                    // First, see if we already have these messages
+                    let toolCallIndex = -1;
+                    let toolResponseIndex = -1;
+
+                    for (let i = 0; i < state.messages.length; i++) {
+                        const msg = state.messages[i];
+                        if (msg.role === "assistant" && msg.tool_calls) {
+                            // Look for matching tool call
+                            if (
+                                msg.tool_calls.some((tc) => tc.id === toolUseId)
+                            ) {
+                                toolCallIndex = i;
+                            }
+                        } else if (
+                            msg.role === "tool" &&
+                            msg.tool_call_id === toolUseId
+                        ) {
+                            toolResponseIndex = i;
+                        }
+                    }
+
+                    // If we have neither, add both
+                    if (toolCallIndex === -1 && toolResponseIndex === -1) {
+                        // Add both messages to history
+                        state.messages.push(toolCallMessage);
+                        state.messages.push(toolResultMessage);
+                    }
+                    // If we have the call but not the response, add the response
+                    else if (toolCallIndex !== -1 && toolResponseIndex === -1) {
+                        state.messages.push(toolResultMessage);
+                    }
+                    // If we have the response but not the call, add the call before the response
+                    else if (toolCallIndex === -1 && toolResponseIndex !== -1) {
+                        state.messages.splice(
+                            toolResponseIndex,
+                            0,
+                            toolCallMessage,
+                        );
+                    }
+                    // If we have both, update the response
+                    else if (toolResponseIndex !== -1) {
+                        state.messages[toolResponseIndex] = toolResultMessage;
+                    }
+                } else if (apiType === "gemini") {
+                    // Find the tool call to get the name
+                    let toolName = "tool_result";
+
+                    // Search for the tool call in messages
+                    for (const msg of state.messages) {
+                        if (msg.role === "model" && msg.parts) {
+                            for (const part of msg.parts) {
+                                if (
+                                    part.functionCall &&
+                                    part.functionCall.name
+                                ) {
+                                    toolName = part.functionCall.name;
+                                    break;
+                                }
+                            }
+                        } else if (msg.role === "assistant" && msg.content) {
+                            const toolUse = msg.content.find(
+                                (item) =>
+                                    item.type === "tool_use" &&
+                                    item.id === toolUseId,
+                            );
+                            if (toolUse) {
+                                toolName = toolUse.name;
+                                break;
+                            }
+                        }
+                    }
+
+                    // Log original result for debugging
+                    console.log(
+                        "Original tool result:",
+                        JSON.stringify(result, null, 2),
+                    );
+
+                    // Gemini expects the name field in the functionResponse
+                    toolResultMessage = {
+                        role: "user",
+                        parts: [
+                            {
+                                functionResponse: {
+                                    name: toolName,
+                                },
+                            },
+                        ],
+                    };
+
+                    // Add response only if we have a result
+                    if (result) {
+                        if (result.is_error) {
+                            toolResultMessage.parts[0].functionResponse.response =
+                                {
+                                    error:
+                                        typeof result.content === "string"
+                                            ? result.content
+                                            : JSON.stringify(result.content),
+                                };
+                        } else {
+                            toolResultMessage.parts[0].functionResponse.response =
+                                {
+                                    result:
+                                        typeof result === "string"
+                                            ? result
+                                            : JSON.stringify(result),
+                                };
+                        }
+                    }
+
+                    // Log the final message for debugging
+                    console.log(
+                        "Gemini function response format:",
+                        JSON.stringify(toolResultMessage, null, 2),
+                    );
+                }
+
+                // Check if we already have this tool result in the message history
+                let existingToolResultIndex = -1;
+
+                if (apiType === "anthropic") {
+                    existingToolResultIndex = state.messages.findIndex(
+                        (msg) =>
+                            msg.role === "user" &&
+                            msg.content &&
+                            msg.content.some(
+                                (item) =>
+                                    item.type === "tool_result" &&
+                                    item.tool_use_id === toolUseId,
+                            ),
+                    );
+                } else if (isOpenAICompatible(apiType)) {
+                    existingToolResultIndex = state.messages.findIndex(
+                        (msg) =>
+                            msg.role === "tool" &&
+                            msg.tool_call_id === toolUseId,
+                    );
+                } else if (apiType === "gemini") {
+                    // For Gemini, we'll just look for any function response
+                    existingToolResultIndex = state.messages.findIndex(
+                        (msg) =>
+                            msg.role === "function" &&
+                            msg.parts &&
+                            msg.parts.some((part) => part.functionResponse),
+                    );
+                }
+
+                if (existingToolResultIndex !== -1) {
+                    // Replace the existing tool result
+                    state.messages[existingToolResultIndex] = toolResultMessage;
+                } else {
+                    // Add new tool result to message history
+                    state.messages.push(toolResultMessage);
+                }
+
+                // Log the full message history for debugging
+                console.log(
+                    "Current message history after tool result:",
+                    JSON.stringify(state.messages, null, 2),
+                );
+
+                // Add thinking indicator while sending tool result back to model
+                addThinkingIndicator();
+                
+                // Continue the conversation by sending the prompt with an empty string
+                // This will tell sendToAnthropicAPI to use the existing messages
+                await callLanguageModel("");
+            }
+
+            // Normalize tool parameters to ensure they have proper schema
+            function normalizeToolParameters(tool) {
+                if (!tool) return tool;
+
+                const normalizedTool = { ...tool };
+
+                // If parameters are missing or not an object, create a default schema
+                if (!normalizedTool.parameters) {
+                    normalizedTool.parameters = {
+                        type: "object",
+                        properties: {},
+                        required: [],
+                    };
+                } else if (typeof normalizedTool.parameters === "object") {
+                    // If parameters exists but is missing required fields for OpenAI
+                    if (!normalizedTool.parameters.type) {
+                        normalizedTool.parameters.type = "object";
+                    }
+
+                    if (!normalizedTool.parameters.properties) {
+                        normalizedTool.parameters.properties = {};
+                    }
+
+                    if (!normalizedTool.parameters.required) {
+                        normalizedTool.parameters.required = [];
+                    }
+                }
+
+                return normalizedTool;
+            }
+
+document.addEventListener("DOMContentLoaded", init);

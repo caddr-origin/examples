@@ -1,0 +1,940 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Caddr MCP</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0f1117;
+        --bg-elevated: #171a22;
+        --bg-subtle: #1d212b;
+        --surface: #232833;
+        --surface-hover: #2a3040;
+        --border: rgba(255, 255, 255, 0.08);
+        --border-strong: rgba(255, 255, 255, 0.14);
+        --text: #eceef4;
+        --text-muted: #9aa3b5;
+        --text-faint: #6b7384;
+        --accent: #6c8cff;
+        --accent-strong: #5478ff;
+        --accent-soft: rgba(108, 140, 255, 0.14);
+        --success: #3ecf8e;
+        --danger: #ff6b7a;
+        --warning: #f5b942;
+        --shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+        --radius: 14px;
+        --radius-sm: 10px;
+        --sidebar-width: 300px;
+        --header-height: 60px;
+        --font: "Inter", system-ui, sans-serif;
+        --mono: "JetBrains Mono", ui-monospace, monospace;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+      }
+
+      body {
+        margin: 0;
+        font-family: var(--font);
+        background: radial-gradient(
+            circle at top,
+            rgba(108, 140, 255, 0.12),
+            transparent 32%
+          ),
+          var(--bg);
+        color: var(--text);
+      }
+
+      button,
+      input,
+      select,
+      textarea {
+        font: inherit;
+      }
+
+      .app {
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .view {
+        display: none;
+        flex: 1;
+        min-height: 0;
+      }
+
+      .view.active {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .topbar {
+        height: var(--header-height);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 18px;
+        border-bottom: 1px solid var(--border);
+        background: rgba(15, 17, 23, 0.82);
+        backdrop-filter: blur(16px);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .brand-mark {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #6c8cff, #9b7bff);
+        display: grid;
+        place-items: center;
+        font-weight: 700;
+        font-size: 0.85rem;
+        color: white;
+        box-shadow: 0 8px 24px rgba(108, 140, 255, 0.35);
+      }
+
+      .brand-copy h1 {
+        margin: 0;
+        font-size: 0.98rem;
+        font-weight: 600;
+      }
+
+      .brand-copy p {
+        margin: 0;
+        font-size: 0.78rem;
+        color: var(--text-muted);
+      }
+
+      .topbar-spacer {
+        flex: 1;
+      }
+
+      .model-picker {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: var(--bg-elevated);
+        min-width: 220px;
+      }
+
+      .model-picker label {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        white-space: nowrap;
+      }
+
+      .model-picker select {
+        flex: 1;
+        border: none;
+        background: transparent;
+        color: var(--text);
+        outline: none;
+        min-width: 0;
+      }
+
+      .icon-btn,
+      .ghost-btn,
+      .primary-btn,
+      .danger-btn {
+        border: 1px solid var(--border);
+        background: var(--bg-elevated);
+        color: var(--text);
+        border-radius: 999px;
+        padding: 8px 14px;
+        cursor: pointer;
+        transition: background 0.15s ease, border-color 0.15s ease,
+          transform 0.15s ease;
+      }
+
+      .icon-btn {
+        width: 38px;
+        height: 38px;
+        padding: 0;
+        display: grid;
+        place-items: center;
+      }
+
+      .ghost-btn:hover,
+      .icon-btn:hover {
+        background: var(--surface-hover);
+        border-color: var(--border-strong);
+      }
+
+      .primary-btn {
+        background: linear-gradient(135deg, var(--accent), #8b7dff);
+        border-color: transparent;
+        color: white;
+        font-weight: 600;
+      }
+
+      .primary-btn:hover:not(:disabled) {
+        transform: translateY(-1px);
+      }
+
+      .primary-btn:disabled,
+      .send-btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+
+      .danger-btn {
+        color: #ffb3bc;
+        border-color: rgba(255, 107, 122, 0.35);
+        background: rgba(255, 107, 122, 0.08);
+      }
+
+      .layout {
+        flex: 1;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: var(--sidebar-width) 1fr;
+      }
+
+      .layout.sidebar-collapsed {
+        grid-template-columns: 0 1fr;
+      }
+
+      .sidebar {
+        border-right: 1px solid var(--border);
+        background: rgba(23, 26, 34, 0.72);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
+
+      .sidebar-inner {
+        padding: 16px;
+        overflow-y: auto;
+        flex: 1;
+      }
+
+      .panel-title {
+        margin: 0 0 12px;
+        font-size: 0.78rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text-faint);
+        font-weight: 600;
+      }
+
+      .server-card,
+      .empty-state {
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        background: var(--bg-elevated);
+      }
+
+      .empty-state {
+        padding: 16px;
+        color: var(--text-muted);
+        font-size: 0.9rem;
+        line-height: 1.5;
+      }
+
+      .server-card + .server-card {
+        margin-top: 10px;
+      }
+
+      .server-card summary {
+        list-style: none;
+        cursor: pointer;
+        padding: 12px 14px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        font-weight: 500;
+      }
+
+      .server-card summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .server-meta {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        font-weight: 400;
+      }
+
+      .tool-list {
+        padding: 0 14px 12px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .tool-chip {
+        font-size: 0.78rem;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: var(--surface);
+        color: var(--text-muted);
+        border: 1px solid var(--border);
+      }
+
+      .chat-main {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        background: linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.015),
+          transparent 120px
+        );
+      }
+
+      .messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 28px 24px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+
+      .welcome-card {
+        max-width: 720px;
+        margin: 40px auto 0;
+        padding: 28px;
+        border: 1px solid var(--border);
+        border-radius: calc(var(--radius) + 4px);
+        background: rgba(23, 26, 34, 0.88);
+        box-shadow: var(--shadow);
+      }
+
+      .welcome-card h2 {
+        margin: 0 0 10px;
+        font-size: 1.35rem;
+      }
+
+      .welcome-card p {
+        margin: 0;
+        color: var(--text-muted);
+        line-height: 1.6;
+      }
+
+      .welcome-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 18px;
+        flex-wrap: wrap;
+      }
+
+      .msg-group {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-width: 860px;
+        width: 100%;
+      }
+
+      .msg-group.user {
+        align-self: flex-end;
+      }
+
+      .msg-label {
+        font-size: 0.75rem;
+        color: var(--text-faint);
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .msg {
+        line-height: 1.65;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .msg-user {
+        padding: 14px 16px;
+        border-radius: 18px 18px 6px 18px;
+        background: var(--accent-soft);
+        border: 1px solid rgba(108, 140, 255, 0.25);
+      }
+
+      .msg-assistant {
+        padding: 2px 0;
+        color: var(--text);
+      }
+
+      .composer-wrap {
+        padding: 16px 24px 24px;
+      }
+
+      .composer {
+        max-width: 860px;
+        margin: 0 auto;
+        border: 1px solid var(--border-strong);
+        border-radius: calc(var(--radius) + 2px);
+        background: rgba(23, 26, 34, 0.95);
+        box-shadow: var(--shadow);
+        padding: 12px;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+        align-items: end;
+      }
+
+      .composer textarea {
+        width: 100%;
+        min-height: 52px;
+        max-height: 180px;
+        resize: none;
+        border: none;
+        background: transparent;
+        color: var(--text);
+        outline: none;
+        padding: 8px 10px;
+        line-height: 1.5;
+      }
+
+      .send-btn {
+        width: 42px;
+        height: 42px;
+        border: none;
+        border-radius: 12px;
+        background: linear-gradient(135deg, var(--accent), #8b7dff);
+        color: white;
+        cursor: pointer;
+        display: grid;
+        place-items: center;
+      }
+
+      .thinking-indicator {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--text-muted);
+        font-size: 0.9rem;
+      }
+
+      .thinking-dots {
+        display: flex;
+        gap: 4px;
+      }
+
+      .thinking-dots .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--accent);
+        animation: pulse 1.2s infinite ease-in-out;
+      }
+
+      .thinking-dots .dot:nth-child(2) {
+        animation-delay: 0.15s;
+      }
+
+      .thinking-dots .dot:nth-child(3) {
+        animation-delay: 0.3s;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          transform: scale(0.75);
+          opacity: 0.45;
+        }
+        50% {
+          transform: scale(1);
+          opacity: 1;
+        }
+      }
+
+      .tool-interaction {
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        overflow: hidden;
+        background: var(--bg-elevated);
+      }
+
+      .tool-interaction-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 10px 12px;
+        cursor: pointer;
+        background: var(--surface);
+      }
+
+      .tool-name {
+        font-size: 0.88rem;
+        font-weight: 500;
+      }
+
+      .tool-status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .tool-rerun-button {
+        border: 1px solid var(--border);
+        background: var(--bg-subtle);
+        color: var(--text);
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 0.75rem;
+        cursor: pointer;
+      }
+
+      .tool-loading {
+        width: 14px;
+        height: 14px;
+        border: 2px solid rgba(255, 255, 255, 0.12);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.9s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .tool-interaction-body {
+        display: none;
+        padding: 12px 14px;
+        border-top: 1px solid var(--border);
+      }
+
+      .tool-interaction-body.expanded {
+        display: block;
+      }
+
+      .tool-call,
+      .tool-result {
+        font-family: var(--mono);
+        font-size: 0.8rem;
+        overflow-x: auto;
+      }
+
+      .tool-call pre,
+      .tool-result pre {
+        margin: 8px 0 0;
+        padding: 10px;
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.25);
+      }
+
+      .tool-result-images img {
+        max-width: 320px;
+        max-height: 320px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        margin-top: 8px;
+      }
+
+      .settings-view {
+        overflow-y: auto;
+      }
+
+      .settings-shell {
+        max-width: 920px;
+        margin: 0 auto;
+        padding: 28px 24px 48px;
+      }
+
+      .settings-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 24px;
+      }
+
+      .settings-header h2 {
+        margin: 0;
+        font-size: 1.6rem;
+      }
+
+      .settings-header p {
+        margin: 6px 0 0;
+        color: var(--text-muted);
+      }
+
+      .provider-grid {
+        display: grid;
+        gap: 16px;
+      }
+
+      .provider-card {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: rgba(23, 26, 34, 0.92);
+        padding: 18px;
+      }
+
+      .provider-card h3 {
+        margin: 0 0 6px;
+        font-size: 1rem;
+      }
+
+      .provider-card p {
+        margin: 0 0 14px;
+        color: var(--text-muted);
+        font-size: 0.9rem;
+        line-height: 1.5;
+      }
+
+      .field-row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .field-row input {
+        flex: 1;
+        min-width: 240px;
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: var(--bg-subtle);
+        color: var(--text);
+        outline: none;
+      }
+
+      .field-row input:focus {
+        border-color: rgba(108, 140, 255, 0.55);
+      }
+
+      .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        border: 1px solid var(--border);
+        color: var(--text-muted);
+      }
+
+      .status-pill.ok {
+        color: #b8f5d5;
+        border-color: rgba(62, 207, 142, 0.35);
+        background: rgba(62, 207, 142, 0.08);
+      }
+
+      .caddr-auth {
+        margin-top: 18px;
+        padding: 16px;
+        border: 1px dashed var(--border-strong);
+        border-radius: var(--radius-sm);
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      .caddr-auth iframe {
+        width: 100%;
+        min-height: 80px;
+        border: none;
+        border-radius: 10px;
+        background: white;
+      }
+
+      .toast {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        padding: 12px 16px;
+        border-radius: 12px;
+        background: var(--surface);
+        border: 1px solid var(--border-strong);
+        box-shadow: var(--shadow);
+        opacity: 0;
+        transform: translateY(8px);
+        pointer-events: none;
+        transition: opacity 0.2s ease, transform 0.2s ease;
+        z-index: 30;
+      }
+
+      .toast.show {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      @media (max-width: 960px) {
+        .layout,
+        .layout.sidebar-collapsed {
+          grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          display: none;
+        }
+
+        .model-picker {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <section id="viewChat" class="view active">
+        <header class="topbar">
+          <button id="sidebarToggle" class="icon-btn" title="Toggle servers">
+            ☰
+          </button>
+          <div class="brand">
+            <div class="brand-mark">CM</div>
+            <div class="brand-copy">
+              <h1>Caddr MCP</h1>
+              <p>Content-addressed tools for LLMs</p>
+            </div>
+          </div>
+          <div class="topbar-spacer"></div>
+          <div class="model-picker">
+            <label for="modelSelector">Model</label>
+            <select id="modelSelector"></select>
+          </div>
+          <button id="newChatBtn" class="ghost-btn">New chat</button>
+          <button id="openSettingsBtn" class="icon-btn" title="Settings">
+            ⚙
+          </button>
+        </header>
+
+        <div id="layout" class="layout">
+          <aside id="sidebar" class="sidebar">
+            <div class="sidebar-inner">
+              <h2 class="panel-title">Connected servers</h2>
+              <div id="serverList"></div>
+            </div>
+          </aside>
+
+          <main class="chat-main">
+            <div id="messagesContainer" class="messages">
+              <div id="welcomeCard" class="welcome-card">
+                <h2>Ask anything. Call tools anywhere.</h2>
+                <p>
+                  Connect MCP servers in other tabs, add an API key in
+                  Settings, pick a model, and start chatting. Tool calls run
+                  through content-addressed caddr iframes.
+                </p>
+                <div class="welcome-actions">
+                  <button id="welcomeSettingsBtn" class="primary-btn">
+                    Open settings
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="composer-wrap">
+              <div class="composer">
+                <textarea
+                  id="promptInput"
+                  rows="1"
+                  placeholder="Message Caddr MCP…"
+                ></textarea>
+                <button id="sendButton" class="send-btn" disabled title="Send">
+                  ↑
+                </button>
+              </div>
+            </div>
+          </main>
+        </div>
+      </section>
+
+      <section id="viewSettings" class="view settings-view">
+        <header class="topbar">
+          <button id="backToChatBtn" class="ghost-btn">← Back to chat</button>
+          <div class="topbar-spacer"></div>
+        </header>
+
+        <div class="settings-shell">
+          <div class="settings-header">
+            <div>
+              <h2>Settings</h2>
+              <p>
+                API keys are stored locally in your browser. Add a provider key
+                to unlock its models.
+              </p>
+            </div>
+          </div>
+
+          <div class="provider-grid">
+            <article class="provider-card" data-provider="anthropic">
+              <h3>Anthropic</h3>
+              <p>Claude Sonnet 4.6, Opus 4.8, and Haiku 4.5.</p>
+              <div class="field-row">
+                <input
+                  id="anthropicApiKeyInput"
+                  type="password"
+                  placeholder="sk-ant-…"
+                  autocomplete="off"
+                />
+                <button
+                  id="saveAnthropicApiKey"
+                  class="primary-btn"
+                  data-provider="anthropic"
+                >
+                  Save
+                </button>
+                <button
+                  id="clearAnthropicApiKey"
+                  class="danger-btn"
+                  data-provider="anthropic"
+                >
+                  Clear
+                </button>
+              </div>
+              <div id="anthropicKeyStatus" class="status-pill">Not configured</div>
+            </article>
+
+            <article class="provider-card" data-provider="openai">
+              <h3>OpenAI</h3>
+              <p>GPT-5, GPT-5 Mini, and o4-mini.</p>
+              <div class="field-row">
+                <input
+                  id="openaiApiKeyInput"
+                  type="password"
+                  placeholder="sk-…"
+                  autocomplete="off"
+                />
+                <button
+                  id="saveOpenaiApiKey"
+                  class="primary-btn"
+                  data-provider="openai"
+                >
+                  Save
+                </button>
+                <button
+                  id="clearOpenaiApiKey"
+                  class="danger-btn"
+                  data-provider="openai"
+                >
+                  Clear
+                </button>
+              </div>
+              <div id="openaiKeyStatus" class="status-pill">Not configured</div>
+            </article>
+
+            <article class="provider-card" data-provider="gemini">
+              <h3>Google Gemini</h3>
+              <p>Gemini 2.5 Flash and Gemini 2.5 Pro.</p>
+              <div class="field-row">
+                <input
+                  id="geminiApiKeyInput"
+                  type="password"
+                  placeholder="AIza…"
+                  autocomplete="off"
+                />
+                <button
+                  id="saveGeminiApiKey"
+                  class="primary-btn"
+                  data-provider="gemini"
+                >
+                  Save
+                </button>
+                <button
+                  id="clearGeminiApiKey"
+                  class="danger-btn"
+                  data-provider="gemini"
+                >
+                  Clear
+                </button>
+              </div>
+              <div id="geminiKeyStatus" class="status-pill">Not configured</div>
+            </article>
+
+            <article class="provider-card" data-provider="xai">
+              <h3>xAI</h3>
+              <p>Grok 3 and Grok 3 Mini via the xAI API.</p>
+              <div class="field-row">
+                <input
+                  id="xaiApiKeyInput"
+                  type="password"
+                  placeholder="xai-…"
+                  autocomplete="off"
+                />
+                <button
+                  id="saveXaiApiKey"
+                  class="primary-btn"
+                  data-provider="xai"
+                >
+                  Save
+                </button>
+                <button
+                  id="clearXaiApiKey"
+                  class="danger-btn"
+                  data-provider="xai"
+                >
+                  Clear
+                </button>
+              </div>
+              <div id="xaiKeyStatus" class="status-pill">Not configured</div>
+            </article>
+
+            <article class="provider-card" data-provider="openrouter">
+              <h3>OpenRouter</h3>
+              <p>
+                Route to Claude, GPT, Gemini, Grok, and more through one key.
+              </p>
+              <div class="field-row">
+                <input
+                  id="openrouterApiKeyInput"
+                  type="password"
+                  placeholder="sk-or-…"
+                  autocomplete="off"
+                />
+                <button
+                  id="saveOpenrouterApiKey"
+                  class="primary-btn"
+                  data-provider="openrouter"
+                >
+                  Save
+                </button>
+                <button
+                  id="clearOpenrouterApiKey"
+                  class="danger-btn"
+                  data-provider="openrouter"
+                >
+                  Clear
+                </button>
+              </div>
+              <div id="openrouterKeyStatus" class="status-pill">
+                Not configured
+              </div>
+            </article>
+          </div>
+
+          <div id="caddrFrameContainer" class="caddr-auth" hidden>
+            <h3 class="panel-title">Grant Caddr access</h3>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script src="api.js"></script>
+    <script src="client4-app.js"></script>
+  </body>
+</html>
