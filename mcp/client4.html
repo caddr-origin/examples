@@ -32,7 +32,6 @@
         --shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
         --radius: 14px;
         --radius-sm: 10px;
-        --sidebar-width: 280px;
         --tools-width: 320px;
         --header-height: 60px;
         --font: "Inter", system-ui, sans-serif;
@@ -212,26 +211,7 @@
         flex: 1;
         min-height: 0;
         display: grid;
-        grid-template-columns: var(--sidebar-width) 1fr var(--tools-width);
-      }
-
-      .layout.sidebar-collapsed {
-        grid-template-columns: 0 1fr var(--tools-width);
-      }
-
-      .sidebar {
-        border-right: 1px solid var(--border);
-        background: rgba(23, 26, 34, 0.72);
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
-        min-width: 0;
-      }
-
-      .sidebar-inner {
-        padding: 16px;
-        overflow-y: auto;
-        flex: 1;
+        grid-template-columns: 1fr var(--tools-width);
       }
 
       .panel-title {
@@ -243,59 +223,55 @@
         font-weight: 600;
       }
 
-      .server-card,
-      .empty-state {
-        border: 1px solid var(--border);
-        border-radius: var(--radius-sm);
-        background: var(--bg-elevated);
-      }
-
       .empty-state {
         padding: 16px;
         color: var(--text-muted);
         font-size: 0.9rem;
         line-height: 1.5;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        background: var(--bg-elevated);
       }
 
-      .server-card + .server-card {
+      .server-group {
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        background: var(--bg-elevated);
+        overflow: hidden;
+      }
+
+      .server-group + .server-group {
         margin-top: 10px;
       }
 
-      .server-card summary {
+      .server-group summary {
         list-style: none;
         cursor: pointer;
         padding: 12px 14px;
         display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        font-weight: 500;
+        flex-direction: column;
+        gap: 4px;
       }
 
-      .server-card summary::-webkit-details-marker {
+      .server-group summary::-webkit-details-marker {
         display: none;
       }
 
-      .server-meta {
+      .server-group-name {
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      .server-group-meta {
         font-size: 0.75rem;
         color: var(--text-muted);
-        font-weight: 400;
       }
 
-      .tool-list {
-        padding: 0 14px 12px;
+      .server-group-tools {
+        padding: 0 10px 10px;
         display: flex;
-        flex-wrap: wrap;
+        flex-direction: column;
         gap: 8px;
-      }
-
-      .tool-chip {
-        font-size: 0.78rem;
-        padding: 6px 10px;
-        border-radius: 999px;
-        background: var(--surface);
-        color: var(--text-muted);
-        border: 1px solid var(--border);
       }
 
       .tools-panel {
@@ -375,20 +351,11 @@
       }
 
       .tool-row-server {
-        margin-top: 8px;
-        font-size: 0.72rem;
-        color: var(--text-faint);
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
+        display: none;
       }
 
       .tools-group-title {
-        margin: 8px 0 4px;
-        font-size: 0.72rem;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--text-faint);
-        font-weight: 600;
+        display: none;
       }
 
       .tools-mobile-toggle {
@@ -783,13 +750,8 @@
       }
 
       @media (max-width: 960px) {
-        .layout,
-        .layout.sidebar-collapsed {
+        .layout {
           grid-template-columns: 1fr;
-        }
-
-        .sidebar {
-          display: none;
         }
 
         .tools-panel {
@@ -838,9 +800,6 @@
     <div class="app">
       <section id="viewChat" class="view active">
         <header class="topbar">
-          <button id="sidebarToggle" class="icon-btn" title="Toggle servers">
-            ☰
-          </button>
           <div class="brand">
             <div class="brand-mark">CM</div>
             <div class="brand-copy">
@@ -863,21 +822,14 @@
         </header>
 
         <div id="layout" class="layout">
-          <aside id="sidebar" class="sidebar">
-            <div class="sidebar-inner">
-              <h2 class="panel-title">Connected servers</h2>
-              <div id="serverList"></div>
-            </div>
-          </aside>
-
           <main class="chat-main">
             <div id="messagesContainer" class="messages">
               <div id="welcomeCard" class="welcome-card">
                 <h2>Ask anything. Call tools anywhere.</h2>
                 <p>
                   Connect MCP servers in other tabs, add an API key in
-                  Settings, pick a model, and start chatting. Tool calls run
-                  through content-addressed caddr iframes.
+                  Settings, pick a model, and start chatting. Connected
+                  servers and their tools appear in the MCP tools panel.
                 </p>
                 <div class="welcome-actions">
                   <button id="welcomeSettingsBtn" class="primary-btn">
@@ -904,8 +856,8 @@
           <aside id="toolsPanel" class="tools-panel">
             <div class="tools-panel-inner">
               <div class="tools-panel-header">
-                <h2 class="panel-title">Available tools</h2>
-                <span id="toolsCount" class="tools-count">0 tools</span>
+                <h2 class="panel-title">MCP tools</h2>
+                <span id="toolsCount" class="tools-count">0 servers</span>
               </div>
               <input
                 id="toolsFilter"

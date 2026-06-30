@@ -134,8 +134,6 @@ const elements = {
     viewChat: document.getElementById("viewChat"),
     viewSettings: document.getElementById("viewSettings"),
     layout: document.getElementById("layout"),
-    sidebarToggle: document.getElementById("sidebarToggle"),
-    sidebar: document.getElementById("sidebar"),
     openSettingsBtn: document.getElementById("openSettingsBtn"),
     welcomeSettingsBtn: document.getElementById("welcomeSettingsBtn"),
     backToChatBtn: document.getElementById("backToChatBtn"),
@@ -158,7 +156,6 @@ const elements = {
     saveOpenrouterApiKey: document.getElementById("saveOpenrouterApiKey"),
     clearOpenrouterApiKey: document.getElementById("clearOpenrouterApiKey"),
     modelSelector: document.getElementById("modelSelector"),
-    serverList: document.getElementById("serverList"),
     toolsPanel: document.getElementById("toolsPanel"),
     toolsPanelOverlay: document.getElementById("toolsPanelOverlay"),
     toolsList: document.getElementById("toolsList"),
@@ -262,7 +259,6 @@ function updateSendButtonState() {
 }
 
 function init() {
-    elements.sidebarToggle.addEventListener("click", toggleSidebar);
     elements.openSettingsBtn.addEventListener("click", showSettings);
     elements.welcomeSettingsBtn.addEventListener("click", showSettings);
     elements.backToChatBtn.addEventListener("click", showChat);
@@ -294,7 +290,7 @@ function init() {
     setupServerListeners();
     updateToolsPanel();
 
-    setTimeout(updateServerList, 500);
+    setTimeout(updateToolsPanel, 500);
 }
 
 function capitalize(value) {
@@ -316,67 +312,81 @@ function closeToolsPanel() {
     elements.toolsPanelOverlay.classList.remove("open");
 }
 
-function getToolsCatalog() {
-    const catalog = [];
-
-    Object.entries(state.servers).forEach(([serverId, serverInfo]) => {
-        const serverName = serverInfo.name || "Unknown server";
-        const serverOrigin = serverInfo.fromOrigin || "";
-
-        (serverInfo.tools || []).forEach((tool) => {
-            catalog.push({
+function getServerGroups() {
+    return Object.entries(state.servers)
+        .map(([serverId, serverInfo]) => ({
+            serverId,
+            serverName: serverInfo.name || "Unknown server",
+            serverOrigin: serverInfo.fromOrigin || "",
+            tools: (serverInfo.tools || []).map((tool) => ({
                 name: tool.name,
                 description: tool.description || "No description provided.",
-                serverName,
-                serverOrigin,
-                serverId,
-            });
-        });
-    });
+            })),
+        }))
+        .sort((a, b) => a.serverName.localeCompare(b.serverName));
+}
 
-    catalog.sort((a, b) => {
-        const serverCompare = a.serverName.localeCompare(b.serverName);
-        if (serverCompare !== 0) return serverCompare;
-        return a.name.localeCompare(b.name);
-    });
+function serverMatchesFilter(group) {
+    if (!state.toolsFilterQuery) return true;
 
-    return catalog;
+    const haystack = [
+        group.serverName,
+        group.serverOrigin,
+        ...group.tools.flatMap((tool) => [tool.name, tool.description]),
+    ]
+        .join(" ")
+        .toLowerCase();
+
+    return haystack.includes(state.toolsFilterQuery);
+}
+
+function filterToolsForGroup(group) {
+    if (!state.toolsFilterQuery) return group.tools;
+
+    return group.tools.filter((tool) => {
+        const haystack = [tool.name, tool.description, group.serverName, group.serverOrigin]
+            .join(" ")
+            .toLowerCase();
+        return haystack.includes(state.toolsFilterQuery);
+    });
 }
 
 function updateToolsPanel() {
-    const catalog = getToolsCatalog();
-    const filtered = state.toolsFilterQuery
-        ? catalog.filter((tool) => {
-              const haystack = [
-                  tool.name,
-                  tool.description,
-                  tool.serverName,
-                  tool.serverOrigin,
-              ]
-                  .join(" ")
-                  .toLowerCase();
-              return haystack.includes(state.toolsFilterQuery);
-          })
-        : catalog;
+    const groups = getServerGroups();
+    const visibleGroups = groups
+        .filter(serverMatchesFilter)
+        .map((group) => ({
+            ...group,
+            tools: filterToolsForGroup(group),
+        }))
+        .filter((group) => group.tools.length > 0 || !state.toolsFilterQuery);
 
-    const countLabel =
-        filtered.length === 1 ? "1 tool" : `${filtered.length} tools`;
-    elements.toolsCount.textContent = countLabel;
+    const toolCount = groups.reduce(
+        (total, group) => total + group.tools.length,
+        0,
+    );
+    const serverCount = groups.length;
+    const summaryLabel =
+        serverCount === 0
+            ? "0 servers"
+            : `${serverCount} server${serverCount === 1 ? "" : "s"} · ${toolCount} tool${toolCount === 1 ? "" : "s"}`;
+
+    elements.toolsCount.textContent = summaryLabel;
     elements.toolsToggle.textContent =
-        filtered.length > 0 ? `Tools (${filtered.length})` : "Tools";
+        toolCount > 0 ? `Tools (${toolCount})` : "Tools";
 
     elements.toolsList.innerHTML = "";
 
-    if (catalog.length === 0) {
+    if (groups.length === 0) {
         const empty = document.createElement("div");
         empty.className = "empty-state";
         empty.innerHTML =
-            "<p>No tools available yet.</p><p>Open an MCP server page in another tab to connect tools.</p>";
+            "<p>No MCP servers connected yet.</p><p>Open a server page in another tab and its tools will appear here.</p>";
         elements.toolsList.appendChild(empty);
         return;
     }
 
-    if (filtered.length === 0) {
+    if (visibleGroups.length === 0) {
         const empty = document.createElement("div");
         empty.className = "empty-state";
         empty.innerHTML = "<p>No tools match your filter.</p>";
@@ -384,26 +394,44 @@ function updateToolsPanel() {
         return;
     }
 
-    let currentServer = null;
-    filtered.forEach((tool) => {
-        if (tool.serverName !== currentServer) {
-            currentServer = tool.serverName;
-            const groupTitle = document.createElement("div");
-            groupTitle.className = "tools-group-title";
-            groupTitle.textContent = tool.serverName;
-            elements.toolsList.appendChild(groupTitle);
+    visibleGroups.forEach((group) => {
+        const card = document.createElement("details");
+        card.className = "server-group";
+        card.open = true;
+
+        const summary = document.createElement("summary");
+        summary.innerHTML = `
+            <span class="server-group-name">${escapeHtml(group.serverName)}</span>
+            <span class="server-group-meta">${group.tools.length} tool${group.tools.length === 1 ? "" : "s"}${group.serverOrigin ? ` · ${escapeHtml(group.serverOrigin)}` : ""}</span>
+        `;
+        summary.title = group.serverOrigin
+            ? `${group.serverName} · ${group.serverOrigin}`
+            : `Server ID: ${group.serverId}`;
+        card.appendChild(summary);
+
+        const toolsWrap = document.createElement("div");
+        toolsWrap.className = "server-group-tools";
+
+        if (group.tools.length === 0) {
+            const emptyTool = document.createElement("div");
+            emptyTool.className = "tool-row";
+            emptyTool.innerHTML =
+                '<div class="tool-row-desc">No tools registered for this server.</div>';
+            toolsWrap.appendChild(emptyTool);
+        } else {
+            group.tools.forEach((tool) => {
+                const row = document.createElement("article");
+                row.className = "tool-row";
+                row.innerHTML = `
+                    <div class="tool-row-name">${escapeHtml(tool.name)}</div>
+                    <div class="tool-row-desc">${escapeHtml(tool.description)}</div>
+                `;
+                toolsWrap.appendChild(row);
+            });
         }
 
-        const row = document.createElement("article");
-        row.className = "tool-row";
-        row.innerHTML = `
-            <div class="tool-row-name">${escapeHtml(tool.name)}</div>
-            <div class="tool-row-desc">${escapeHtml(tool.description)}</div>
-            <div class="tool-row-server">${escapeHtml(
-                tool.serverOrigin || tool.serverName,
-            )}</div>
-        `;
-        elements.toolsList.appendChild(row);
+        card.appendChild(toolsWrap);
+        elements.toolsList.appendChild(card);
     });
 }
 
@@ -455,10 +483,6 @@ function handleModelChange() {
     state.selectedApiType = selectedOption.dataset.apiType;
     localStorage.setItem("SELECTED_MODEL", state.selectedModel);
     localStorage.setItem("SELECTED_API_TYPE", state.selectedApiType);
-}
-
-function toggleSidebar() {
-    elements.layout.classList.toggle("sidebar-collapsed");
 }
 
 function saveApiKey(provider) {
@@ -527,66 +551,9 @@ function clearApiKey(provider) {
                     },
                     updateServerList: (servers) => {
                         state.servers = servers;
-                        updateServerList();
+                        updateToolsPanel();
                     },
                 });
-            }
-
-            function updateServerList() {
-                elements.serverList.innerHTML = "";
-
-                if (Object.keys(state.servers).length === 0) {
-                    const noServersMsg = document.createElement("div");
-                    noServersMsg.className = "empty-state";
-                    noServersMsg.innerHTML =
-                        "<p>No MCP servers connected yet.</p><p>Open a server page in another tab and it will appear here automatically.</p>";
-                    elements.serverList.appendChild(noServersMsg);
-                    updateToolsPanel();
-                    return;
-                }
-
-                Object.entries(state.servers).forEach(
-                    ([serverId, serverInfo]) => {
-                        const card = document.createElement("details");
-                        card.className = "server-card";
-                        card.open = true;
-
-                        const summary = document.createElement("summary");
-                        const serverName = serverInfo.name || "Unknown server";
-                        const serverOrigin = serverInfo.fromOrigin || "";
-                        summary.innerHTML = `
-                            <span>${escapeHtml(serverName)}</span>
-                            <span class="server-meta">${serverInfo.tools?.length || 0} tools</span>
-                        `;
-                        summary.title = serverOrigin
-                            ? `${serverName} · ${serverOrigin}`
-                            : `Server ID: ${serverId}`;
-                        card.appendChild(summary);
-
-                        const toolsList = document.createElement("div");
-                        toolsList.className = "tool-list";
-
-                        if (serverInfo.tools?.length) {
-                            serverInfo.tools.forEach((tool) => {
-                                const chip = document.createElement("span");
-                                chip.className = "tool-chip";
-                                chip.textContent = tool.name;
-                                chip.title = tool.description || "No description";
-                                toolsList.appendChild(chip);
-                            });
-                        } else {
-                            const chip = document.createElement("span");
-                            chip.className = "tool-chip";
-                            chip.textContent = "No tools";
-                            toolsList.appendChild(chip);
-                        }
-
-                        card.appendChild(toolsList);
-                        elements.serverList.appendChild(card);
-                    },
-                );
-
-                updateToolsPanel();
             }
 
             function hideWelcomeCard() {
