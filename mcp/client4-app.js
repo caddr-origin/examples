@@ -127,6 +127,7 @@ const state = {
     activeStreamController: null,
     messageIdCounter: 0,
     isWaitingForToolResult: false,
+    toolsFilterQuery: "",
 };
 
 const elements = {
@@ -158,6 +159,12 @@ const elements = {
     clearOpenrouterApiKey: document.getElementById("clearOpenrouterApiKey"),
     modelSelector: document.getElementById("modelSelector"),
     serverList: document.getElementById("serverList"),
+    toolsPanel: document.getElementById("toolsPanel"),
+    toolsPanelOverlay: document.getElementById("toolsPanelOverlay"),
+    toolsList: document.getElementById("toolsList"),
+    toolsCount: document.getElementById("toolsCount"),
+    toolsFilter: document.getElementById("toolsFilter"),
+    toolsToggle: document.getElementById("toolsToggle"),
     messagesContainer: document.getElementById("messagesContainer"),
     promptInput: document.getElementById("promptInput"),
     sendButton: document.getElementById("sendButton"),
@@ -276,18 +283,136 @@ function init() {
     elements.promptInput.addEventListener("keydown", handlePromptKeydown);
     elements.promptInput.addEventListener("input", autoResizePrompt);
     elements.sendButton.addEventListener("click", sendMessage);
+    elements.toolsFilter.addEventListener("input", handleToolsFilter);
+    elements.toolsToggle.addEventListener("click", toggleToolsPanel);
+    elements.toolsPanelOverlay.addEventListener("click", closeToolsPanel);
 
     maskConfiguredInputs();
     updateKeyStatuses();
     populateModelSelector();
     updateSendButtonState();
     setupServerListeners();
+    updateToolsPanel();
 
     setTimeout(updateServerList, 500);
 }
 
 function capitalize(value) {
     return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function handleToolsFilter(event) {
+    state.toolsFilterQuery = event.target.value.trim().toLowerCase();
+    updateToolsPanel();
+}
+
+function toggleToolsPanel() {
+    elements.toolsPanel.classList.toggle("open");
+    elements.toolsPanelOverlay.classList.toggle("open");
+}
+
+function closeToolsPanel() {
+    elements.toolsPanel.classList.remove("open");
+    elements.toolsPanelOverlay.classList.remove("open");
+}
+
+function getToolsCatalog() {
+    const catalog = [];
+
+    Object.entries(state.servers).forEach(([serverId, serverInfo]) => {
+        const serverName = serverInfo.name || "Unknown server";
+        const serverOrigin = serverInfo.fromOrigin || "";
+
+        (serverInfo.tools || []).forEach((tool) => {
+            catalog.push({
+                name: tool.name,
+                description: tool.description || "No description provided.",
+                serverName,
+                serverOrigin,
+                serverId,
+            });
+        });
+    });
+
+    catalog.sort((a, b) => {
+        const serverCompare = a.serverName.localeCompare(b.serverName);
+        if (serverCompare !== 0) return serverCompare;
+        return a.name.localeCompare(b.name);
+    });
+
+    return catalog;
+}
+
+function updateToolsPanel() {
+    const catalog = getToolsCatalog();
+    const filtered = state.toolsFilterQuery
+        ? catalog.filter((tool) => {
+              const haystack = [
+                  tool.name,
+                  tool.description,
+                  tool.serverName,
+                  tool.serverOrigin,
+              ]
+                  .join(" ")
+                  .toLowerCase();
+              return haystack.includes(state.toolsFilterQuery);
+          })
+        : catalog;
+
+    const countLabel =
+        filtered.length === 1 ? "1 tool" : `${filtered.length} tools`;
+    elements.toolsCount.textContent = countLabel;
+    elements.toolsToggle.textContent =
+        filtered.length > 0 ? `Tools (${filtered.length})` : "Tools";
+
+    elements.toolsList.innerHTML = "";
+
+    if (catalog.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "empty-state";
+        empty.innerHTML =
+            "<p>No tools available yet.</p><p>Open an MCP server page in another tab to connect tools.</p>";
+        elements.toolsList.appendChild(empty);
+        return;
+    }
+
+    if (filtered.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "empty-state";
+        empty.innerHTML = "<p>No tools match your filter.</p>";
+        elements.toolsList.appendChild(empty);
+        return;
+    }
+
+    let currentServer = null;
+    filtered.forEach((tool) => {
+        if (tool.serverName !== currentServer) {
+            currentServer = tool.serverName;
+            const groupTitle = document.createElement("div");
+            groupTitle.className = "tools-group-title";
+            groupTitle.textContent = tool.serverName;
+            elements.toolsList.appendChild(groupTitle);
+        }
+
+        const row = document.createElement("article");
+        row.className = "tool-row";
+        row.innerHTML = `
+            <div class="tool-row-name">${escapeHtml(tool.name)}</div>
+            <div class="tool-row-desc">${escapeHtml(tool.description)}</div>
+            <div class="tool-row-server">${escapeHtml(
+                tool.serverOrigin || tool.serverName,
+            )}</div>
+        `;
+        elements.toolsList.appendChild(row);
+    });
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
 }
 
 function autoResizePrompt() {
@@ -416,6 +541,7 @@ function clearApiKey(provider) {
                     noServersMsg.innerHTML =
                         "<p>No MCP servers connected yet.</p><p>Open a server page in another tab and it will appear here automatically.</p>";
                     elements.serverList.appendChild(noServersMsg);
+                    updateToolsPanel();
                     return;
                 }
 
@@ -429,7 +555,7 @@ function clearApiKey(provider) {
                         const serverName = serverInfo.name || "Unknown server";
                         const serverOrigin = serverInfo.fromOrigin || "";
                         summary.innerHTML = `
-                            <span>${serverName}</span>
+                            <span>${escapeHtml(serverName)}</span>
                             <span class="server-meta">${serverInfo.tools?.length || 0} tools</span>
                         `;
                         summary.title = serverOrigin
@@ -459,6 +585,8 @@ function clearApiKey(provider) {
                         elements.serverList.appendChild(card);
                     },
                 );
+
+                updateToolsPanel();
             }
 
             function hideWelcomeCard() {

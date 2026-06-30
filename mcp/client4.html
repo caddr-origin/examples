@@ -32,7 +32,8 @@
         --shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
         --radius: 14px;
         --radius-sm: 10px;
-        --sidebar-width: 300px;
+        --sidebar-width: 280px;
+        --tools-width: 320px;
         --header-height: 60px;
         --font: "Inter", system-ui, sans-serif;
         --mono: "JetBrains Mono", ui-monospace, monospace;
@@ -211,11 +212,11 @@
         flex: 1;
         min-height: 0;
         display: grid;
-        grid-template-columns: var(--sidebar-width) 1fr;
+        grid-template-columns: var(--sidebar-width) 1fr var(--tools-width);
       }
 
       .layout.sidebar-collapsed {
-        grid-template-columns: 0 1fr;
+        grid-template-columns: 0 1fr var(--tools-width);
       }
 
       .sidebar {
@@ -295,6 +296,107 @@
         background: var(--surface);
         color: var(--text-muted);
         border: 1px solid var(--border);
+      }
+
+      .tools-panel {
+        border-left: 1px solid var(--border);
+        background: rgba(23, 26, 34, 0.82);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
+
+      .tools-panel-inner {
+        padding: 16px;
+        overflow-y: auto;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .tools-panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .tools-count {
+        font-size: 0.78rem;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        border: 1px solid rgba(108, 140, 255, 0.25);
+        white-space: nowrap;
+      }
+
+      .tools-filter {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: var(--bg-subtle);
+        color: var(--text);
+        outline: none;
+      }
+
+      .tools-filter:focus {
+        border-color: rgba(108, 140, 255, 0.55);
+      }
+
+      .tools-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .tool-row {
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        background: var(--bg-elevated);
+        padding: 12px 14px;
+      }
+
+      .tool-row-name {
+        font-family: var(--mono);
+        font-size: 0.84rem;
+        color: var(--text);
+        font-weight: 500;
+      }
+
+      .tool-row-desc {
+        margin-top: 6px;
+        font-size: 0.82rem;
+        color: var(--text-muted);
+        line-height: 1.45;
+      }
+
+      .tool-row-server {
+        margin-top: 8px;
+        font-size: 0.72rem;
+        color: var(--text-faint);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .tools-group-title {
+        margin: 8px 0 4px;
+        font-size: 0.72rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text-faint);
+        font-weight: 600;
+      }
+
+      .tools-mobile-toggle {
+        display: none;
+      }
+
+      .tools-panel-overlay {
+        display: none;
       }
 
       .chat-main {
@@ -690,6 +792,42 @@
           display: none;
         }
 
+        .tools-panel {
+          position: fixed;
+          top: var(--header-height);
+          right: 0;
+          bottom: 0;
+          width: min(100vw, var(--tools-width));
+          z-index: 20;
+          transform: translateX(100%);
+          transition: transform 0.22s ease;
+          box-shadow: var(--shadow);
+        }
+
+        .tools-panel.open {
+          transform: translateX(0);
+        }
+
+        .tools-panel-overlay {
+          display: block;
+          position: fixed;
+          inset: var(--header-height) 0 0 0;
+          background: rgba(0, 0, 0, 0.45);
+          z-index: 19;
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity 0.22s ease;
+        }
+
+        .tools-panel-overlay.open {
+          opacity: 1;
+          pointer-events: auto;
+        }
+
+        .tools-mobile-toggle {
+          display: inline-flex;
+        }
+
         .model-picker {
           display: none;
         }
@@ -711,6 +849,9 @@
             </div>
           </div>
           <div class="topbar-spacer"></div>
+          <button id="toolsToggle" class="ghost-btn tools-mobile-toggle">
+            Tools
+          </button>
           <div class="model-picker">
             <label for="modelSelector">Model</label>
             <select id="modelSelector"></select>
@@ -759,7 +900,29 @@
               </div>
             </div>
           </main>
+
+          <aside id="toolsPanel" class="tools-panel">
+            <div class="tools-panel-inner">
+              <div class="tools-panel-header">
+                <h2 class="panel-title">Available tools</h2>
+                <span id="toolsCount" class="tools-count">0 tools</span>
+              </div>
+              <input
+                id="toolsFilter"
+                class="tools-filter"
+                type="search"
+                placeholder="Filter tools…"
+              />
+              <div id="toolsList" class="tools-list">
+                <div class="empty-state">
+                  <p>No tools available yet.</p>
+                  <p>Open an MCP server page in another tab to connect tools.</p>
+                </div>
+              </div>
+            </div>
+          </aside>
         </div>
+        <div id="toolsPanelOverlay" class="tools-panel-overlay"></div>
       </section>
 
       <section id="viewSettings" class="view settings-view">
