@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CADDR-MCP DuckDB Server</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      .dropzone {
+        border: 2px dashed #3b82f6;
+        border-radius: 8px;
+        transition: all 0.3s ease;
+      }
+      .dropzone.active {
+        border-color: #10b981;
+        background-color: rgba(16, 185, 129, 0.1);
+      }
+    </style>
+  </head>
+  <body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+      <div class="flex items-center justify-between mb-6">
+        <h1 class="text-3xl font-bold text-gray-800">
+          CADDR-MCP DuckDB Server
+        </h1>
+        <div
+          id="authorizationFrame"
+          style="display: none"
+          class="w-[300px] h-[80px] border rounded p-2"
+        >
+          <h1>Authorization</h1>
+          <p>Please authorize this server to access your DuckDB data.</p>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+        <div id="initStatus" class="mb-4 text-gray-600">
+          Initializing DuckDB...
+        </div>
+
+        <div id="dropzone" class="dropzone p-8 text-center cursor-pointer mb-4">
+          <p class="text-gray-500 mb-2">
+            Drag and drop a DuckDB database file (.duckdb) here
+          </p>
+          <p class="text-sm text-gray-400">or start with an in-memory database</p>
+          <button
+            id="fileSelectBtn"
+            class="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition disabled:opacity-50"
+            disabled
+          >
+            Select File
+          </button>
+          <input
+            type="file"
+            id="fileInput"
+            class="hidden"
+            accept=".duckdb,.db"
+          />
+        </div>
+
+        <div id="dbInfo" class="mb-4 hidden">
+          <div class="flex items-center gap-2">
+            <div class="h-3 w-3 rounded-full bg-green-500"></div>
+            <p class="text-green-600 font-medium" id="dbStatus">
+              Database ready
+            </p>
+          </div>
+          <p class="text-sm text-gray-600" id="dbName"></p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-white rounded-lg shadow-md p-6">
+          <h2 class="text-xl font-semibold mb-4 text-gray-700">SQL Query</h2>
+          <textarea
+            id="queryInput"
+            class="w-full h-40 p-3 border border-gray-300 rounded mb-4 font-mono text-sm"
+            placeholder="Enter your SQL query here..."
+          >SELECT 42 AS answer;</textarea>
+          <div class="flex justify-between items-center">
+            <button
+              id="runQueryBtn"
+              class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled
+            >
+              Run Query
+            </button>
+            <button
+              id="listTablesBtn"
+              class="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled
+            >
+              List Tables
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-md p-6">
+          <h2 class="text-xl font-semibold mb-4 text-gray-700">Results</h2>
+          <div id="resultsContainer" class="overflow-x-auto">
+            <div id="resultStatus" class="text-gray-500 italic">
+              No query executed yet
+            </div>
+            <div id="queryResults" class="mt-4"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="dataBox" class="mt-6"></div>
+    </div>
+
+    <script src="api.js"></script>
+    <script type="module">
+      import * as duckdb from "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.28.0/+esm";
+
+      let db = null;
+      let conn = null;
+      let ready = false;
+      let currentFileName = "";
+
+      const initStatus = document.getElementById("initStatus");
+      const dropzone = document.getElementById("dropzone");
+      const fileInput = document.getElementById("fileInput");
+      const fileSelectBtn = document.getElementById("fileSelectBtn");
+      const dbInfo = document.getElementById("dbInfo");
+      const dbStatus = document.getElementById("dbStatus");
+      const dbName = document.getElementById("dbName");
+      const queryInput = document.getElementById("queryInput");
+      const runQueryBtn = document.getElementById("runQueryBtn");
+      const listTablesBtn = document.getElementById("listTablesBtn");
+      const resultStatus = document.getElementById("resultStatus");
+      const queryResults = document.getElementById("queryResults");
+
+      function formatBytes(bytes, decimals = 2) {
+        if (bytes === 0) return "0 Bytes";
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return (
+          parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i]
+        );
+      }
+
+      function arrowToResults(arrowResult) {
+        if (!arrowResult || arrowResult.numRows === 0) {
+          const columns =
+            arrowResult?.schema?.fields?.map((field) => field.name) || [];
+          return { columns, values: [] };
+        }
+
+        const columns = arrowResult.schema.fields.map((field) => field.name);
+        const values = arrowResult.toArray().map((row) => {
+          const json = row.toJSON();
+          return columns.map((column) => json[column]);
+        });
+
+        return { columns, values };
+      }
+
+      function displayResults(results, executionTime) {
+        queryResults.innerHTML = "";
+        resultStatus.classList.remove("text-red-500");
+
+        if (!results || results.length === 0) {
+          resultStatus.textContent = `Query executed successfully in ${executionTime.toFixed(
+            2
+          )}ms. No results returned.`;
+          return;
+        }
+
+        results.forEach((result) => {
+          resultStatus.textContent = `Query executed in ${executionTime.toFixed(
+            2
+          )}ms. Displaying ${result.values.length} rows.`;
+
+          const table = document.createElement("table");
+          table.className =
+            "min-w-full divide-y divide-gray-200 border border-gray-300 mb-4";
+
+          const thead = document.createElement("thead");
+          thead.className = "bg-gray-50";
+          const headerRow = document.createElement("tr");
+
+          result.columns.forEach((column) => {
+            const th = document.createElement("th");
+            th.className =
+              "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider";
+            th.textContent = column;
+            headerRow.appendChild(th);
+          });
+
+          thead.appendChild(headerRow);
+          table.appendChild(thead);
+
+          const tbody = document.createElement("tbody");
+          tbody.className = "bg-white divide-y divide-gray-200";
+
+          result.values.forEach((row, i) => {
+            const tr = document.createElement("tr");
+            tr.className = i % 2 === 0 ? "bg-white" : "bg-gray-50";
+
+            row.forEach((cell) => {
+              const td = document.createElement("td");
+              td.className =
+                "px-6 py-4 whitespace-nowrap text-sm text-gray-500";
+              td.textContent =
+                cell === null || cell === undefined ? "NULL" : String(cell);
+              tr.appendChild(td);
+            });
+
+            tbody.appendChild(tr);
+          });
+
+          table.appendChild(tbody);
+          queryResults.appendChild(table);
+        });
+      }
+
+      async function executeQuery(query) {
+        if (!ready || !conn) {
+          resultStatus.textContent = "DuckDB is still initializing";
+          resultStatus.classList.add("text-red-500");
+          return null;
+        }
+
+        try {
+          const startTime = performance.now();
+          const arrowResult = await conn.query(query);
+          const endTime = performance.now();
+          const result = arrowToResults(arrowResult);
+          displayResults([result], endTime - startTime);
+          return { results: [result], executionTimeMs: endTime - startTime };
+        } catch (err) {
+          console.error("Error executing query:", err);
+          resultStatus.textContent = "Error executing query: " + err.message;
+          resultStatus.classList.add("text-red-500");
+          queryResults.innerHTML = "";
+          throw err;
+        }
+      }
+
+      async function initDuckDB() {
+        const bundles = duckdb.getJsDelivrBundles();
+        const bundle = await duckdb.selectBundle(bundles);
+        const workerUrl = URL.createObjectURL(
+          new Blob([`importScripts("${bundle.mainWorker}");`], {
+            type: "text/javascript",
+          })
+        );
+
+        const worker = new Worker(workerUrl);
+        const logger = new duckdb.ConsoleLogger();
+        db = new duckdb.AsyncDuckDB(logger, worker);
+        await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+        URL.revokeObjectURL(workerUrl);
+
+        conn = await db.connect();
+        ready = true;
+
+        initStatus.textContent = "DuckDB ready (in-memory database).";
+        dbInfo.classList.remove("hidden");
+        dbName.textContent = "In-memory DuckDB database";
+        runQueryBtn.disabled = false;
+        listTablesBtn.disabled = false;
+        fileSelectBtn.disabled = false;
+      }
+
+      async function handleFile(file) {
+        if (!ready || !db) {
+          resultStatus.textContent =
+            "DuckDB is still initializing. Please try again in a moment.";
+          resultStatus.classList.add("text-red-500");
+          return;
+        }
+
+        currentFileName = file.name;
+
+        try {
+          const buffer = new Uint8Array(await file.arrayBuffer());
+          await db.registerFileBuffer(file.name, buffer);
+          await conn.close();
+          await db.open({
+            path: file.name,
+            accessMode: duckdb.DuckDBAccessMode.READ_ONLY,
+          });
+          conn = await db.connect();
+
+          dbInfo.classList.remove("hidden");
+          dbName.textContent = `File: ${file.name} (${formatBytes(file.size)})`;
+          dbStatus.textContent = "Database loaded successfully!";
+
+          queryInput.value =
+            "SELECT table_name FROM information_schema.tables WHERE table_schema = 'main' AND table_type = 'BASE TABLE';";
+          await executeQuery(queryInput.value);
+        } catch (err) {
+          console.error("Error loading database:", err);
+          resultStatus.textContent = "Error loading database: " + err.message;
+          resultStatus.classList.add("text-red-500");
+        }
+      }
+
+      dropzone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropzone.classList.add("active");
+      });
+
+      dropzone.addEventListener("dragleave", () => {
+        dropzone.classList.remove("active");
+      });
+
+      dropzone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropzone.classList.remove("active");
+        if (e.dataTransfer.files.length) {
+          handleFile(e.dataTransfer.files[0]);
+        }
+      });
+
+      fileSelectBtn.addEventListener("click", () => {
+        fileInput.click();
+      });
+
+      fileInput.addEventListener("change", (e) => {
+        if (e.target.files.length) {
+          handleFile(e.target.files[0]);
+        }
+      });
+
+      runQueryBtn.addEventListener("click", () => {
+        executeQuery(queryInput.value);
+      });
+
+      listTablesBtn.addEventListener("click", () => {
+        queryInput.value =
+          "SELECT table_name FROM information_schema.tables WHERE table_schema = 'main' AND table_type = 'BASE TABLE';";
+        executeQuery(queryInput.value);
+      });
+
+      registerMCPServer({
+        insertFrame: (frame) => {
+          document.getElementById("authorizationFrame").appendChild(frame);
+        },
+        showAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "block";
+        },
+        hideAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "none";
+        },
+        name: "duckdb-server",
+        version: "1.0.0",
+        tools: [
+          {
+            name: "run_sql_query",
+            description:
+              "Runs a SQL query against the current DuckDB database (in-memory or loaded .duckdb file).",
+            input_schema: {
+              type: "object",
+              properties: {
+                query: {
+                  type: "string",
+                  description: "The SQL query to execute against the database.",
+                },
+              },
+              required: ["query"],
+            },
+            async execute(sender, params) {
+              if (!ready || !conn) {
+                return { error: "DuckDB is still initializing" };
+              }
+
+              try {
+                const arrowResult = await conn.query(params.query);
+                const result = arrowToResults(arrowResult);
+                return {
+                  success: true,
+                  results: [result],
+                };
+              } catch (err) {
+                return { error: err.message };
+              }
+            },
+          },
+          {
+            name: "list_tables",
+            description: "Lists all tables in the current DuckDB database.",
+            input_schema: {
+              type: "object",
+              properties: {},
+            },
+            async execute(sender) {
+              if (!ready || !conn) {
+                return { error: "DuckDB is still initializing" };
+              }
+
+              try {
+                const arrowResult = await conn.query(
+                  "SELECT table_name FROM information_schema.tables WHERE table_schema = 'main' AND table_type = 'BASE TABLE';"
+                );
+                const result = arrowToResults(arrowResult);
+                return {
+                  success: true,
+                  tables: result.values.flat(),
+                };
+              } catch (err) {
+                return { error: err.message };
+              }
+            },
+          },
+        ],
+      });
+
+      initDuckDB().catch((err) => {
+        console.error("Error initializing DuckDB:", err);
+        initStatus.textContent = "Failed to initialize DuckDB: " + err.message;
+        initStatus.classList.add("text-red-500");
+      });
+    </script>
+  </body>
+</html>

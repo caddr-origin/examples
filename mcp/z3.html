@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CADDR-MCP Z3 Server</title>
+    <script>
+      if (!crossOriginIsolated) {
+        const script = document.createElement("script");
+        script.src = "coi-serviceworker.min.js";
+        document.head.appendChild(script);
+      }
+    </script>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+        margin: 0;
+        padding: 20px;
+        line-height: 1.6;
+        color: #333;
+        background: #f3f4f6;
+      }
+      h1,
+      h2 {
+        color: #1f2937;
+      }
+      .container {
+        max-width: 1100px;
+        margin: 0 auto;
+      }
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+      }
+      .card {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.5rem;
+      }
+      @media (max-width: 900px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      textarea {
+        width: 100%;
+        min-height: 16rem;
+        padding: 0.75rem;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.875rem;
+        box-sizing: border-box;
+      }
+      button {
+        padding: 0.5rem 1rem;
+        background: #3b82f6;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      button:hover:not(:disabled) {
+        background: #2563eb;
+      }
+      #z3Out {
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 6px;
+        padding: 0.75rem;
+        min-height: 16rem;
+        font-size: 0.875rem;
+      }
+      #z3Out pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        margin: 0;
+      }
+      .hint {
+        color: #6b7280;
+        font-size: 0.875rem;
+        margin-bottom: 0.75rem;
+      }
+      code {
+        background: #f3f4f6;
+        padding: 0.1rem 0.25rem;
+        border-radius: 4px;
+        font-size: 0.8rem;
+      }
+      #authorizationFrame {
+        width: 300px;
+        height: 80px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        padding: 8px;
+      }
+      .error {
+        color: #dc2626;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>CADDR-MCP Z3 Server</h1>
+        <div id="authorizationFrame" style="display: none">
+          <strong>Authorization</strong>
+          <p>Please authorize this server to use the Z3 solver.</p>
+        </div>
+      </div>
+
+      <p class="hint">
+        SMT constraint solver powered by
+        <a href="https://github.com/Z3Prover/z3">Z3</a>
+        via
+        <a href="https://www.npmjs.com/package/z3-solver">z3-solver</a>
+        (WebAssembly). Requires cross-origin isolation (enabled automatically via
+        service worker on static hosts).
+      </p>
+
+      <div id="initStatus" class="card">Initializing Z3...</div>
+
+      <div class="grid">
+        <div class="card">
+          <h2>Z3 Code</h2>
+          <p class="hint">
+            Write async JavaScript using the Z3 API. Available bindings:
+            <code>Int</code>, <code>Real</code>, <code>Bool</code>,
+            <code>Solver</code>, <code>And</code>, <code>Or</code>,
+            <code>Not</code>, <code>Implies</code>. Return a value to see it in
+            the output.
+          </p>
+          <textarea id="codeInput" spellcheck="false"></textarea>
+          <div style="margin-top: 0.75rem">
+            <button id="runCodeBtn" disabled>Run Code</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Output</h2>
+          <div id="z3Out">
+            <span class="hint">No output yet</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="dataBox"></div>
+    </div>
+
+    <script>
+      window.global = globalThis;
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/z3-solver@4.13.3/build/z3-built.js"></script>
+    <script src="api.js"></script>
+    <script type="module">
+      const Z3_BASE = "https://cdn.jsdelivr.net/npm/z3-solver@4.13.3/build/";
+      const workerBlobCache = {};
+
+      let z3Module = null;
+      let ready = false;
+
+      const initStatus = document.getElementById("initStatus");
+      const codeInput = document.getElementById("codeInput");
+      const runCodeBtn = document.getElementById("runCodeBtn");
+      const z3Out = document.getElementById("z3Out");
+
+      const defaultCode = `const x = Int.const('x');
+const y = Int.const('y');
+const solver = new Solver();
+solver.add(x.gt(0), y.gt(0), x.add(y).eq(10));
+const status = await solver.check();
+if (status === 'sat') {
+  return { status, model: solver.model().toString() };
+}
+return { status };`;
+
+      codeInput.value = defaultCode;
+
+      function locateFile(file) {
+        if (file.endsWith(".worker.js")) {
+          if (!workerBlobCache[file]) {
+            workerBlobCache[file] = URL.createObjectURL(
+              new Blob([`importScripts("${Z3_BASE}${file}");`], {
+                type: "text/javascript",
+              })
+            );
+          }
+          return workerBlobCache[file];
+        }
+        return `${Z3_BASE}${file}`;
+      }
+
+      function displayOutput(value, isError = false) {
+        if (isError) {
+          z3Out.innerHTML = `<pre class="error">${escapeHtml(String(value))}</pre>`;
+          return;
+        }
+
+        if (value === undefined) {
+          z3Out.innerHTML = `<span class="hint">undefined</span>`;
+          return;
+        }
+
+        const text =
+          typeof value === "string" ? value : JSON.stringify(value, null, 2);
+        z3Out.innerHTML = `<pre>${escapeHtml(text)}</pre>`;
+      }
+
+      function escapeHtml(text) {
+        return text.replace(
+          /[<>&'"]/g,
+          (c) =>
+            ({
+              "<": "&lt;",
+              ">": "&gt;",
+              "&": "&amp;",
+              "'": "&#39;",
+              '"': "&quot;",
+            }[c])
+        );
+      }
+
+      async function waitForCrossOriginIsolation() {
+        for (let i = 0; i < 600; i++) {
+          if (crossOriginIsolated) return;
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        throw new Error(
+          "SharedArrayBuffer requires cross-origin isolation. Wait for the page reload or serve COOP/COEP headers."
+        );
+      }
+
+      async function initZ3Solver() {
+        await waitForCrossOriginIsolation();
+
+        if (typeof globalThis.initZ3 === "undefined") {
+          throw new Error("z3-built.js failed to load");
+        }
+
+        const { init } = await import("https://esm.sh/z3-solver@4.13.3");
+        const originalInitZ3 = globalThis.initZ3;
+        globalThis.initZ3 = () => originalInitZ3({ locateFile });
+        z3Module = await init();
+        ready = true;
+      }
+
+      async function runZ3Code(code) {
+        if (!ready || !z3Module) {
+          throw new Error("Z3 is still initializing");
+        }
+
+        const { Context } = z3Module;
+        const ctx = new Context("main");
+        const { Int, Real, Bool, Solver, And, Or, Not, Implies } = ctx;
+
+        const fn = new Function(
+          "Int",
+          "Real",
+          "Bool",
+          "Solver",
+          "And",
+          "Or",
+          "Not",
+          "Implies",
+          "ctx",
+          `"use strict"; return (async () => { ${code} })();`
+        );
+
+        return fn(Int, Real, Bool, Solver, And, Or, Not, Implies, ctx);
+      }
+
+      async function runSmtLib2(script) {
+        if (!ready || !z3Module) {
+          throw new Error("Z3 is still initializing");
+        }
+
+        const { Context } = z3Module;
+        const ctx = new Context("main");
+        const solver = new ctx.Solver();
+        solver.fromString(script);
+        const status = await solver.check();
+        const response = { status: String(status) };
+        if (status === "sat") {
+          response.model = solver.model().toString();
+        }
+        return response;
+      }
+
+      runCodeBtn.addEventListener("click", async () => {
+        try {
+          const result = await runZ3Code(codeInput.value);
+          displayOutput(result);
+        } catch (err) {
+          console.error(err);
+          displayOutput(err.message || String(err), true);
+        }
+      });
+
+      registerMCPServer({
+        insertFrame: (frame) => {
+          document.getElementById("authorizationFrame").appendChild(frame);
+        },
+        showAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "block";
+        },
+        hideAuthorizationFrame: () => {
+          document.getElementById("authorizationFrame").style.display = "none";
+        },
+        name: "z3-server",
+        version: "1.0.0",
+        tools: [
+          {
+            name: "run_z3",
+            description:
+              "Run JavaScript code using the Z3 SMT solver API. Available bindings: Int, Real, Bool, Solver, And, Or, Not, Implies, and ctx (Context). Code may use await. Return a JSON-serializable value.",
+            input_schema: {
+              type: "object",
+              properties: {
+                code: {
+                  type: "string",
+                  description:
+                    "Async JavaScript using Z3 bindings. Example: declare Int vars, add constraints to a Solver, await solver.check(), return status and model.",
+                },
+              },
+              required: ["code"],
+            },
+            async execute(sender, params) {
+              try {
+                const result = await runZ3Code(params.code);
+                displayOutput(result);
+                return { success: true, result };
+              } catch (err) {
+                displayOutput(err.message || String(err), true);
+                return { error: err.message || String(err) };
+              }
+            },
+          },
+          {
+            name: "run_smtlib2",
+            description:
+              "Parse and check an SMT-LIB2 script. Returns satisfiability status and model if sat.",
+            input_schema: {
+              type: "object",
+              properties: {
+                script: {
+                  type: "string",
+                  description: "SMT-LIB2 script to parse and solve.",
+                },
+              },
+              required: ["script"],
+            },
+            async execute(sender, params) {
+              try {
+                const response = await runSmtLib2(params.script);
+                displayOutput(response);
+                return { success: true, ...response };
+              } catch (err) {
+                displayOutput(err.message || String(err), true);
+                return { error: err.message || String(err) };
+              }
+            },
+          },
+        ],
+      });
+
+      initZ3Solver()
+        .then(async () => {
+          initStatus.textContent = "Z3 ready.";
+          runCodeBtn.disabled = false;
+          const result = await runZ3Code(defaultCode);
+          displayOutput(result);
+        })
+        .catch((err) => {
+          console.error("Error initializing Z3:", err);
+          initStatus.textContent = "Failed to initialize Z3: " + err.message;
+          initStatus.classList.add("error");
+        });
+    </script>
+  </body>
+</html>
