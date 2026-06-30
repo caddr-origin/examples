@@ -288,6 +288,7 @@ function init() {
     populateModelSelector();
     updateSendButtonState();
     setupServerListeners();
+    initMarkdown();
     updateToolsPanel();
 
     setTimeout(updateToolsPanel, 500);
@@ -443,6 +444,75 @@ function escapeHtml(value) {
         .replaceAll('"', "&quot;");
 }
 
+function initMarkdown() {
+    if (typeof marked === "undefined") return;
+    marked.setOptions({
+        breaks: true,
+        gfm: true,
+    });
+}
+
+function renderMarkdown(content) {
+    if (!content) return "";
+    if (typeof marked === "undefined" || typeof DOMPurify === "undefined") {
+        return escapeHtml(content).replaceAll("\n", "<br>");
+    }
+
+    const html = marked.parse(String(content));
+    const sanitized = DOMPurify.sanitize(html, {
+        USE_PROFILES: { html: true },
+        ADD_ATTR: ["target", "rel"],
+    });
+    return enhanceMarkdownLinks(sanitized);
+}
+
+function enhanceMarkdownLinks(html) {
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    template.content.querySelectorAll("a[href]").forEach((anchor) => {
+        anchor.target = "_blank";
+        anchor.rel = "noopener noreferrer";
+    });
+    return template.innerHTML;
+}
+
+function setMessageContent(messageEl, role, content) {
+    if (role === "assistant") {
+        messageEl.classList.add("msg-markdown");
+        messageEl.innerHTML = renderMarkdown(content);
+        return;
+    }
+
+    messageEl.classList.remove("msg-markdown");
+    messageEl.textContent = content;
+}
+
+function hideWelcomeCard() {
+    const welcome = document.getElementById("welcomeCard");
+    if (welcome) welcome.remove();
+}
+
+function appendAssistantNotice(content, { error = false } = {}) {
+    hideWelcomeCard();
+
+    const messageContainer = document.createElement("div");
+    messageContainer.className = "msg-group assistant";
+
+    const messageHeader = document.createElement("div");
+    messageHeader.className = "msg-label";
+    messageHeader.textContent = error ? "Error" : "Assistant";
+    messageContainer.appendChild(messageHeader);
+
+    const message = document.createElement("div");
+    message.className = `msg msg-assistant msg-markdown${error ? " msg-error" : ""}`;
+    message.innerHTML = renderMarkdown(content);
+    messageContainer.appendChild(message);
+
+    elements.messagesContainer.appendChild(messageContainer);
+    elements.messagesContainer.scrollTop =
+        elements.messagesContainer.scrollHeight;
+}
+
 function autoResizePrompt() {
     elements.promptInput.style.height = "auto";
     elements.promptInput.style.height = `${Math.min(
@@ -580,7 +650,7 @@ function clearApiKey(provider) {
 
                     const message = document.createElement("div");
                     message.className = `msg ${bubbleClass}`;
-                    message.textContent = content;
+                    setMessageContent(message, role, content);
                     messageContainer.appendChild(message);
 
                     elements.messagesContainer.appendChild(messageContainer);
@@ -593,7 +663,7 @@ function clearApiKey(provider) {
                 messageContainer = elements.messagesContainer.lastElementChild;
                 const message = messageContainer?.querySelector(`.${bubbleClass}`);
                 if (message) {
-                    message.textContent = content;
+                    setMessageContent(message, role, content);
                     elements.messagesContainer.scrollTop =
                         elements.messagesContainer.scrollHeight;
                 }
@@ -1105,10 +1175,10 @@ function clearApiKey(provider) {
                         // We've hit an OpenAI tool call error that we can't fix - reset state to prevent loops
                         state.isWaitingForToolResult = false;
 
-                        const errorMessage = document.createElement("div");
-                        errorMessage.className = "msg msg-assistant";
-                        errorMessage.innerHTML = `<strong>Error with OpenAI tools:</strong> ${error.message}`;
-                        elements.messagesContainer.appendChild(errorMessage);
+                        appendAssistantNotice(
+                            `**Error with OpenAI tools:** ${error.message}`,
+                            { error: true },
+                        );
 
                         // Clean up any pending tool-related messages to prevent loops
                         state.messages = state.messages.filter((msg) => {
@@ -1134,13 +1204,10 @@ function clearApiKey(provider) {
                             return true;
                         });
                     } else {
-                        const errorMessage = document.createElement("div");
-                        errorMessage.className = "msg msg-assistant";
-                        errorMessage.innerHTML = `<strong>Error:</strong> ${
-                            error.message ||
-                            "Failed to send message. Please try again."
-                        }`;
-                        elements.messagesContainer.appendChild(errorMessage);
+                        appendAssistantNotice(
+                            `**Error:** ${error.message || "Failed to send message. Please try again."}`,
+                            { error: true },
+                        );
                     }
                 } finally {
                     // Remove thinking indicator
@@ -2832,10 +2899,9 @@ function clearApiKey(provider) {
                     );
 
                     // Display error to user
-                    const errorMessage = document.createElement("div");
-                    errorMessage.className = "msg msg-assistant";
-                    errorMessage.innerHTML = `<strong>Error:</strong> ${result.content}`;
-                    elements.messagesContainer.appendChild(errorMessage);
+                    appendAssistantNotice(`**Error:** ${result.content}`, {
+                        error: true,
+                    });
 
                     // Clean up message history to prevent loops
                     state.messages = state.messages.filter((msg) => {
