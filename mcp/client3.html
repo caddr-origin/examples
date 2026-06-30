@@ -566,7 +566,7 @@
                 },
                 selectedModel:
                     localStorage.getItem("SELECTED_MODEL") ||
-                    "claude-3-7-sonnet-20250219",
+                    "claude-sonnet-4-6",
                 selectedApiType:
                     localStorage.getItem("SELECTED_API_TYPE") || "anthropic",
                 messages: [],
@@ -598,80 +598,84 @@
                 sendButton: document.getElementById("sendButton"),
             };
 
+            function geminiStreamEndpoint(modelId) {
+                return `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:streamGenerateContent`;
+            }
+
             // Available models configuration
             function getAvailableModels() {
                 const availableModels = [];
 
                 if (state.apiKeys.anthropic) {
                     availableModels.push({
-                        name: "Claude 3.5 Haiku",
+                        name: "Claude Opus 4.8",
                         apiType: "anthropic",
-                        modelId: "claude-3-5-haiku-20241022",
+                        modelId: "claude-opus-4-8",
                         endpoint: "https://api.anthropic.com/v1/messages",
                     });
                     availableModels.push({
-                        name: "Claude 3.7 Sonnet",
+                        name: "Claude Sonnet 4.6",
                         apiType: "anthropic",
-                        modelId: "claude-3-7-sonnet-20250219",
+                        modelId: "claude-sonnet-4-6",
                         endpoint: "https://api.anthropic.com/v1/messages",
                     });
                     availableModels.push({
-                        name: "Claude Sonnet 4",
+                        name: "Claude Haiku 4.5",
                         apiType: "anthropic",
-                        modelId: "claude-sonnet-4-20250514",
-                        endpoint: "https://api.anthropic.com/v1/messages",
-                    });
-                    availableModels.push({
-                        name: "Claude Opus 4",
-                        apiType: "anthropic",
-                        modelId: "claude-opus-4-20250514",
+                        modelId: "claude-haiku-4-5-20251001",
                         endpoint: "https://api.anthropic.com/v1/messages",
                     });
                 }
 
                 if (state.apiKeys.openai) {
                     availableModels.push({
-                        name: "GPT-4.1 Nano",
+                        name: "GPT-5.5",
                         apiType: "openai",
-                        modelId: "gpt-4.1-nano",
+                        modelId: "gpt-5.5",
                         endpoint: "https://api.openai.com/v1/chat/completions",
                     });
                     availableModels.push({
-                        name: "GPT-4.1 Mini",
+                        name: "GPT-5.4",
                         apiType: "openai",
-                        modelId: "gpt-4.1-mini",
+                        modelId: "gpt-5.4",
                         endpoint: "https://api.openai.com/v1/chat/completions",
                     });
                     availableModels.push({
-                        name: "GPT-4.1",
+                        name: "GPT-5.4 Mini",
                         apiType: "openai",
-                        modelId: "gpt-4.1",
+                        modelId: "gpt-5.4-mini",
                         endpoint: "https://api.openai.com/v1/chat/completions",
                     });
                     availableModels.push({
-                        name: "o3",
+                        name: "GPT-5.4 Nano",
                         apiType: "openai",
-                        modelId: "o3",
+                        modelId: "gpt-5.4-nano",
                         endpoint: "https://api.openai.com/v1/chat/completions",
                     });
                 }
 
                 if (state.apiKeys.gemini) {
                     availableModels.push({
-                        name: "Gemini 2.5 Flash",
+                        name: "Gemini 3.5 Flash",
                         apiType: "gemini",
-                        modelId: "gemini-2.5-flash-preview-04-17",
-                        // Use streamGenerateContent endpoint instead of generateContent
-                        endpoint:
-                            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-04-17:streamGenerateContent",
+                        modelId: "gemini-3.5-flash",
+                        endpoint: geminiStreamEndpoint("gemini-3.5-flash"),
                     });
                     availableModels.push({
-                        name: "Gemini 2.5 Pro",
+                        name: "Gemini 3.1 Pro Preview",
                         apiType: "gemini",
-                        modelId: "gemini-2.5-pro-preview-03-25",
-                        // Use streamGenerateContent endpoint instead of generateContent
-                        endpoint:
-                            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-preview-03-25:streamGenerateContent",
+                        modelId: "gemini-3.1-pro-preview",
+                        endpoint: geminiStreamEndpoint(
+                            "gemini-3.1-pro-preview",
+                        ),
+                    });
+                    availableModels.push({
+                        name: "Gemini 3.1 Flash Lite",
+                        apiType: "gemini",
+                        modelId: "gemini-3.1-flash-lite",
+                        endpoint: geminiStreamEndpoint(
+                            "gemini-3.1-flash-lite",
+                        ),
                     });
                 }
 
@@ -692,6 +696,18 @@
             function populateModelSelector() {
                 const models = getAvailableModels();
                 elements.modelSelector.innerHTML = "";
+
+                const selectedModelExists = models.some(
+                    (model) => model.modelId === state.selectedModel,
+                );
+                if (
+                    !selectedModelExists &&
+                    models.length > 0 &&
+                    models[0].apiType !== "none"
+                ) {
+                    state.selectedModel = models[0].modelId;
+                    localStorage.setItem("SELECTED_MODEL", state.selectedModel);
+                }
 
                 models.forEach((model) => {
                     const option = document.createElement("option");
@@ -1595,12 +1611,6 @@
                     case "anthropic":
                         headers["X-API-Key"] = state.apiKeys.anthropic;
                         headers["Anthropic-Version"] = "2023-06-01";
-                        if (
-                            modelConfig.modelId === "claude-3-5-sonnet-20240620"
-                        ) {
-                            headers["Anthropic-Beta"] =
-                                "token-efficient-tools-2025-02-19";
-                        }
                         headers["Anthropic-Dangerous-Direct-Browser-Access"] =
                             "true";
                         break;
